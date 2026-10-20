@@ -17,16 +17,13 @@
     <section aria-labelledby="map-title" class="card">
       <h2 id="map-title">Plan de la salle</h2>
       <div id="map" class="map"></div>
-      <button id="all-zones" class="chip" type="button" aria-pressed="true">Toutes les zones</button>
     </section>
 
-    <section class="card filters" aria-label="Filtre par difficulté">
-      <label>Niveau min.
-        <select id="min-grade"></select>
-      </label>
-      <label>Niveau max.
-        <select id="max-grade"></select>
-      </label>
+    <section class="card filters" aria-label="Filtre par niveau">
+      <span>Niveau de</span>
+      <select id="min-grade" aria-label="Niveau minimum"></select>
+      <span>à</span>
+      <select id="max-grade" aria-label="Niveau maximum"></select>
     </section>
 
     <section aria-labelledby="list-title">
@@ -41,9 +38,23 @@
       <h2 id="detail-title"></h2>
       <button id="close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
-    <p id="detail-meta" class="meta"></p>
+    <p id="detail-grade" class="detail-grade"></p>
+
     <div id="detail-photo" class="photo"></div>
-    <div id="detail-video" class="video"></div>
+
+    <section class="beta" aria-labelledby="beta-title">
+      <h3 id="beta-title">Beta</h3>
+      <p class="beta-help">Vidéos de résolution du bloc. Touche une vignette pour la regarder en plein écran.</p>
+      <div id="beta-videos" class="beta-videos"></div>
+      <p id="beta-empty" class="beta-empty" hidden>Pas encore de vidéo pour ce bloc.</p>
+      <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
+      <p class="beta-hint">S'ouvre dans WhatsApp : choisis le groupe de la salle, colle ton lien YouTube et envoie.</p>
+    </section>
+  </dialog>
+
+  <dialog id="player" class="player" aria-label="Lecteur vidéo">
+    <button id="player-close" class="player-close" type="button" aria-label="Fermer la vidéo">&times;</button>
+    <div id="player-frame" class="player-frame"></div>
   </dialog>
 
   <script src="app.js"></script>

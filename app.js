@@ -28,11 +28,12 @@ async function init() {
     ]);
     state.zones = zoneData.zones;
     state.boulders = boulders;
-    buildMap(zoneData.viewBox);
+    buildMap(zoneData);
     buildGradeSelects();
-    $("all-zones").addEventListener("click", () => setZone("all"));
     $("close").addEventListener("click", closeDetail);
-    $("detail").addEventListener("close", onDialogClosed);
+    $("detail").addEventListener("close", onDetailClosed);
+    $("player-close").addEventListener("click", () => $("player").close());
+    $("player").addEventListener("close", () => $("player-frame").replaceChildren());
     window.addEventListener("hashchange", syncDetailWithHash);
     render();
     syncDetailWithHash();
@@ -44,39 +45,57 @@ async function init() {
   }
 }
 
+/* ---------- Colors ---------- */
+
+// Solid color, or diagonal stripes when the boulder has a second color.
+function colorBackground(boulder, stripe) {
+  if (!boulder.color2) return boulder.color;
+  return `repeating-linear-gradient(45deg, ${boulder.color} 0 ${stripe}px, ${boulder.color2} ${stripe}px ${stripe * 2}px)`;
+}
+
 /* ---------- Map ---------- */
 
-function buildMap(viewBox) {
+function buildMap(zoneData) {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("viewBox", zoneData.viewBox);
   svg.setAttribute("role", "group");
   svg.setAttribute("aria-label", "Plan de la salle avec les quatre zones");
 
-  for (const zone of state.zones) {
+  const entries = [
+    { key: "all", area: zoneData.all, onSelect: () => selectAll() },
+    ...state.zones.map((zone) => ({ key: String(zone.id), area: zone, onSelect: () => setZone(zone.id) })),
+  ];
+
+  for (const { key, area, onSelect } of entries) {
     const polygon = document.createElementNS(SVG_NS, "polygon");
-    polygon.setAttribute("points", zone.points.map((p) => p.join(",")).join(" "));
+    polygon.setAttribute("points", area.points.map((p) => p.join(",")).join(" "));
     polygon.setAttribute("class", "zone");
-    polygon.setAttribute("data-zone", zone.id);
+    polygon.setAttribute("data-zone", key);
     polygon.setAttribute("role", "button");
     polygon.setAttribute("tabindex", "0");
-    polygon.setAttribute("aria-label", zone.name);
-    polygon.addEventListener("click", () => setZone(zone.id));
+    polygon.setAttribute("aria-label", key === "all" ? "Toutes les zones" : area.name);
+    polygon.addEventListener("click", onSelect);
     polygon.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        setZone(zone.id);
+        onSelect();
       }
     });
     svg.appendChild(polygon);
 
     const label = document.createElementNS(SVG_NS, "text");
-    label.setAttribute("x", zone.label[0]);
-    label.setAttribute("y", zone.label[1]);
+    label.setAttribute("x", area.label[0]);
+    label.setAttribute("y", area.label[1]);
     label.setAttribute("class", "zone-label");
-    label.textContent = zone.name;
+    label.textContent = area.name;
     svg.appendChild(label);
   }
   $("map").appendChild(svg);
+}
+
+function selectAll() {
+  state.zone = "all";
+  render();
 }
 
 function setZone(zone) {
@@ -128,19 +147,16 @@ function render() {
   $("max-grade").value = String(state.max);
 
   for (const polygon of document.querySelectorAll(".zone")) {
-    const active = state.zone !== "all" && Number(polygon.dataset.zone) === state.zone;
+    const active = polygon.dataset.zone === String(state.zone);
     polygon.classList.toggle("active", active);
     polygon.setAttribute("aria-pressed", String(active));
   }
-  $("all-zones").setAttribute("aria-pressed", String(state.zone === "all"));
 
   const items = visibleBoulders();
   $("count").textContent = `(${items.length})`;
   $("empty").hidden = items.length > 0;
   $("empty").textContent = "Aucun bloc ne correspond à ces filtres.";
-
-  const list = $("list");
-  list.replaceChildren(...items.map(renderItem));
+  $("list").replaceChildren(...items.map(renderItem));
 }
 
 function renderItem(boulder) {
@@ -152,7 +168,7 @@ function renderItem(boulder) {
 
   const swatch = document.createElement("span");
   swatch.className = "swatch";
-  swatch.style.background = boulder.color;
+  swatch.style.background = colorBackground(boulder, 6);
 
   const main = document.createElement("span");
   main.className = "item-main";
@@ -166,8 +182,11 @@ function renderItem(boulder) {
 
   const grade = document.createElement("span");
   grade.className = "grade";
-  grade.textContent = boulder.grade;
-  grade.setAttribute("aria-label", `Niveau ${boulder.grade}`);
+  const gradeLabel = document.createElement("small");
+  gradeLabel.textContent = "Niveau";
+  const gradeValue = document.createElement("strong");
+  gradeValue.textContent = boulder.grade;
+  grade.append(gradeLabel, gradeValue);
 
   button.append(swatch, main, grade);
   li.appendChild(button);
@@ -189,8 +208,9 @@ function closeDetail() {
   if (dialog.open) dialog.close();
 }
 
-function onDialogClosed() {
-  $("detail-video").replaceChildren(); // stops the video
+function onDetailClosed() {
+  if ($("player").open) $("player").close();
+  $("beta-videos").replaceChildren();
   if (location.hash) {
     history.replaceState(null, "", location.pathname + location.search);
   }
@@ -209,31 +229,18 @@ function syncDetailWithHash() {
 }
 
 function fillDetail(boulder) {
-  $("detail-title").textContent = `${boulder.colorName} · niveau ${boulder.grade}`;
-  $("detail-meta").textContent = zoneName(boulder.zone);
-
-  const photo = $("detail-photo");
-  photo.replaceChildren(buildPhoto(boulder));
-
-  const video = $("detail-video");
-  video.replaceChildren();
-  const videoId = extractYouTubeId(boulder.video);
-  if (videoId) {
-    const iframe = document.createElement("iframe");
-    iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
-    iframe.title = `Solution du bloc ${boulder.colorName}`;
-    iframe.loading = "lazy";
-    iframe.allow = "accelerometer; encrypted-media; gyroscope; picture-in-picture";
-    iframe.allowFullscreen = true;
-    video.appendChild(iframe);
-  }
+  const zone = zoneName(boulder.zone);
+  $("detail-title").textContent = `${boulder.colorName} - ${zone}`;
+  $("detail-grade").textContent = `Niveau ${boulder.grade}`;
+  $("detail-photo").replaceChildren(buildPhoto(boulder));
+  fillBeta(boulder, zone);
 }
 
 function buildPhoto(boulder) {
   const fallback = () => {
     const div = document.createElement("div");
     div.className = "photo-missing";
-    div.style.background = boulder.color;
+    div.style.background = colorBackground(boulder, 14);
     div.textContent = "Photo à venir";
     return div;
   };
@@ -244,6 +251,48 @@ function buildPhoto(boulder) {
   img.alt = `Bloc ${boulder.colorName}, ${zoneName(boulder.zone)}`;
   img.addEventListener("error", () => img.replaceWith(fallback()));
   return img;
+}
+
+/* ---------- Beta (videos) ---------- */
+
+function fillBeta(boulder, zone) {
+  const ids = (boulder.videos || []).map(extractYouTubeId).filter(Boolean);
+
+  $("beta-videos").replaceChildren(...ids.map((id, index) => buildThumb(id, index + 1)));
+  $("beta-empty").hidden = ids.length > 0;
+
+  const message = `Beta pour le bloc ${boulder.colorName} - ${zone} (${boulder.id}) : `;
+  $("beta-submit").href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+}
+
+function buildThumb(videoId, number) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "thumb";
+  button.setAttribute("aria-label", `Regarder la vidéo ${number} en plein écran`);
+
+  const img = document.createElement("img");
+  img.src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  img.alt = "";
+  img.loading = "lazy";
+  img.addEventListener("error", () => img.remove());
+
+  const play = document.createElement("span");
+  play.className = "play";
+
+  button.append(img, play);
+  button.addEventListener("click", () => openPlayer(videoId));
+  return button;
+}
+
+function openPlayer(videoId) {
+  const iframe = document.createElement("iframe");
+  iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0`;
+  iframe.title = "Vidéo de résolution du bloc";
+  iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+  iframe.allowFullscreen = true;
+  $("player-frame").replaceChildren(iframe);
+  $("player").showModal();
 }
 
 function extractYouTubeId(url) {
