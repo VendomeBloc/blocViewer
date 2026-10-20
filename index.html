@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f2937">
+  <title>Blocs de la salle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Blocs de la salle</h1>
+    <p class="subtitle">Choisis une zone, filtre par niveau, regarde la solution.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="map-title" class="card">
+      <h2 id="map-title">Plan de la salle</h2>
+      <div id="map" class="map"></div>
+      <button id="all-zones" class="chip" type="button" aria-pressed="true">Toutes les zones</button>
+    </section>
+
+    <section class="card filters" aria-label="Filtre par difficulté">
+      <label>Niveau min.
+        <select id="min-grade"></select>
+      </label>
+      <label>Niveau max.
+        <select id="max-grade"></select>
+      </label>
+    </section>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title">Blocs <span id="count" class="count"></span></h2>
+      <ul id="list" class="list"></ul>
+      <p id="empty" class="empty" hidden>Aucun bloc ne correspond à ces filtres.</p>
+    </section>
+  </main>
+
+  <dialog id="detail" aria-labelledby="detail-title">
+    <div class="detail-head">
+      <h2 id="detail-title"></h2>
+      <button id="close" class="close" type="button" aria-label="Fermer">&times;</button>
+    </div>
+    <p id="detail-meta" class="meta"></p>
+    <div id="detail-photo" class="photo"></div>
+    <div id="detail-video" class="video"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

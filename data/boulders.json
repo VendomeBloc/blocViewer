@@ -1,0 +1,14 @@
+[
+  { "id": "z1-01", "color": "#e53935", "colorName": "Rouge",  "zone": 1, "grade": 2, "photo": "photos/z1-01.jpg", "video": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+  { "id": "z1-02", "color": "#1e88e5", "colorName": "Bleu",   "zone": 1, "grade": 4, "photo": "photos/z1-02.jpg", "video": "" },
+  { "id": "z1-03", "color": "#fdd835", "colorName": "Jaune",  "zone": 1, "grade": 6, "photo": "photos/z1-03.jpg", "video": "https://youtu.be/dQw4w9WgXcQ" },
+  { "id": "z2-01", "color": "#43a047", "colorName": "Vert",   "zone": 2, "grade": 1, "photo": "photos/z2-01.jpg", "video": "" },
+  { "id": "z2-02", "color": "#8e24aa", "colorName": "Violet", "zone": 2, "grade": 5, "photo": "photos/z2-02.jpg", "video": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+  { "id": "z2-03", "color": "#212121", "colorName": "Noir",   "zone": 2, "grade": 8, "photo": "photos/z2-03.jpg", "video": "" },
+  { "id": "z3-01", "color": "#fb8c00", "colorName": "Orange", "zone": 3, "grade": 3, "photo": "photos/z3-01.jpg", "video": "" },
+  { "id": "z3-02", "color": "#e53935", "colorName": "Rouge",  "zone": 3, "grade": 5, "photo": "photos/z3-02.jpg", "video": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+  { "id": "z3-03", "color": "#1e88e5", "colorName": "Bleu",   "zone": 3, "grade": 7, "photo": "photos/z3-03.jpg", "video": "" },
+  { "id": "z4-01", "color": "#43a047", "colorName": "Vert",   "zone": 4, "grade": 3, "photo": "photos/z4-01.jpg", "video": "" },
+  { "id": "z4-02", "color": "#fdd835", "colorName": "Jaune",  "zone": 4, "grade": 6, "photo": "photos/z4-02.jpg", "video": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+  { "id": "z4-03", "color": "#8e24aa", "colorName": "Violet", "zone": 4, "grade": 10, "photo": "photos/z4-03.jpg", "video": "" }
+]

@@ -1,0 +1,188 @@
+:root {
+  --bg: #f3f4f6;
+  --card: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --zone: #cbd5e1;
+  --zone-stroke: #64748b;
+  --zone-active: #93c5fd;
+  --border: #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --zone: #334155;
+    --zone-stroke: #94a3b8;
+    --zone-active: #2563eb;
+    --border: #334155;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.4;
+}
+
+.app-header {
+  background: #1f2937;
+  color: #fff;
+  padding: 16px;
+}
+.app-header h1 { margin: 0; font-size: 1.4rem; }
+.subtitle { margin: 4px 0 0; color: #cbd5e1; font-size: .9rem; }
+
+main { max-width: 720px; margin: 0 auto; padding: 16px; }
+
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+/* Map */
+.map svg { width: 100%; height: auto; max-height: 55vh; display: block; }
+.zone {
+  fill: var(--zone);
+  stroke: var(--zone-stroke);
+  stroke-width: 3;
+  cursor: pointer;
+  transition: fill .15s;
+}
+.zone:hover { fill: var(--zone-active); opacity: .8; }
+.zone:focus-visible { outline: none; stroke: var(--accent); stroke-width: 6; }
+.zone.active { fill: var(--zone-active); opacity: 1; }
+.zone-label {
+  font-size: 34px;
+  font-weight: 600;
+  fill: var(--text);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.chip {
+  margin-top: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Filters */
+.filters { display: flex; gap: 12px; }
+.filters label { flex: 1; display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); }
+.filters select {
+  margin-top: 4px;
+  padding: 10px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* List */
+.count { color: var(--muted); font-weight: 400; font-size: .9rem; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.item:hover { border-color: var(--accent); }
+.swatch {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(128, 128, 128, .5);
+}
+.item-main { flex: 1; min-width: 0; }
+.item-title { font-weight: 600; }
+.item-sub { color: var(--muted); font-size: .85rem; }
+.grade {
+  flex: none;
+  min-width: 44px;
+  text-align: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 700;
+}
+.empty { color: var(--muted); text-align: center; padding: 24px 0; }
+
+/* Detail dialog */
+dialog {
+  width: min(92vw, 640px);
+  max-height: 92vh;
+  padding: 16px;
+  border: none;
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--text);
+}
+dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.detail-head { display: flex; justify-content: space-between; align-items: center; }
+.detail-head h2 { margin: 0; font-size: 1.2rem; }
+.close {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 2rem;
+  line-height: 1;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.meta { color: var(--muted); margin: 4px 0 12px; }
+.photo img { width: 100%; height: auto; border-radius: 10px; display: block; }
+.photo-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.video { margin-top: 12px; }
+.video iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 10px;
+  display: block;
+}
