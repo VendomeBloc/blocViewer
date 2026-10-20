@@ -1,14 +1,192 @@
 [
-  { "id": "z1-01", "color": "#e53935", "colorName": "Rouge",  "zone": 1, "grade": 2,  "photo": "photos/z1-01.jpg", "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"] },
-  { "id": "z1-02", "color": "#1e88e5", "colorName": "Bleu",   "zone": 1, "grade": 4,  "photo": "photos/z1-02.jpg", "videos": [] },
-  { "id": "z1-03", "color": "#fdd835", "colorName": "Jaune",  "zone": 1, "grade": 6,  "photo": "photos/z1-03.jpg", "videos": ["https://youtu.be/dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"] },
-  { "id": "z2-01", "color": "#43a047", "colorName": "Vert",   "zone": 2, "grade": 1,  "photo": "photos/z2-01.jpg", "videos": [] },
-  { "id": "z2-02", "color": "#8e24aa", "colorName": "Violet", "zone": 2, "grade": 5,  "photo": "photos/z2-02.jpg", "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"] },
-  { "id": "z2-03", "color": "#212121", "colorName": "Noir",   "zone": 2, "grade": 8,  "photo": "photos/z2-03.jpg", "videos": [] },
-  { "id": "z3-01", "color": "#fb8c00", "colorName": "Orange", "zone": 3, "grade": 3,  "photo": "photos/z3-01.jpg", "videos": [] },
-  { "id": "z3-02", "color": "#e53935", "color2": "#ffffff", "colorName": "Rouge et blanc", "zone": 3, "grade": 5, "photo": "photos/z3-02.jpg", "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"] },
-  { "id": "z3-03", "color": "#1e88e5", "colorName": "Bleu",   "zone": 3, "grade": 7,  "photo": "photos/z3-03.jpg", "videos": [] },
-  { "id": "z4-01", "color": "#43a047", "colorName": "Vert",   "zone": 4, "grade": 3,  "photo": "photos/z4-01.jpg", "videos": [] },
-  { "id": "z4-02", "color": "#fdd835", "color2": "#212121", "colorName": "Jaune et noir", "zone": 4, "grade": 6, "photo": "photos/z4-02.jpg", "videos": ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"] },
-  { "id": "z4-03", "color": "#8e24aa", "colorName": "Violet", "zone": 4, "grade": 10, "photo": "photos/z4-03.jpg", "videos": [] }
+  {
+    "id": "z1-01",
+    "color": "#f3ff1c",
+    "colorName": "Jaune fluo",
+    "zone": 1,
+    "grade": 8,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-02",
+    "color": "#ff800d",
+    "colorName": "Orange",
+    "zone": 1,
+    "grade": 7,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-03",
+    "color": "#ff55aa",
+    "colorName": "Rose (Gauche)",
+    "zone": 1,
+    "grade": 8,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-04",
+    "color": "#b823f8",
+    "colorName": "Violet",
+    "zone": 1,
+    "grade": 4,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-05",
+    "color": "#4dea31",
+    "colorName": "Vert fluo",
+    "zone": 1,
+    "grade": 5,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-06",
+    "color": "#224df9",
+    "colorName": "Bleu",
+    "zone": 1,
+    "grade": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-07",
+    "color": "#ff55aa",
+    "colorName": "Rose (Droite)",
+    "zone": 1,
+    "grade": 10,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-08",
+    "color": "#e53935",
+    "colorName": "Rouge",
+    "zone": 1,
+    "grade": 5,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-09",
+    "color": "#1b890e",
+    "colorName": "Vert",
+    "zone": 1,
+    "grade": 2,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z1-10",
+    "color": "#224df9",
+    "colorName": "Bleu",
+    "zone": 1,
+    "grade": 7,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z2-01",
+    "color": "#1a1a1a",
+    "colorName": "Noir",
+    "zone": 2,
+    "grade": 10,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-01",
+    "color": "#ff55aa",
+    "colorName": "Rose",
+    "zone": 4,
+    "grade": 10,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-02",
+    "color": "#ae35ff",
+    "color2": "#3fc512",
+    "colorName": "Multicouleur",
+    "zone": 4,
+    "grade": 6,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-03",
+    "color": "#ff800d",
+    "colorName": "Orange",
+    "zone": 4,
+    "grade": 6,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-04",
+    "color": "#f2f2f2",
+    "colorName": "Blanc",
+    "zone": 4,
+    "grade": 8,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-05",
+    "color": "#b823f8",
+    "colorName": "Violet",
+    "zone": 4,
+    "grade": 9,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-06",
+    "color": "#1a1a1a",
+    "colorName": "Noir",
+    "zone": 4,
+    "grade": 9,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-07",
+    "color": "#f3ff1c",
+    "colorName": "Jaune fluo",
+    "zone": 4,
+    "grade": 1,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-08",
+    "color": "#4dea31",
+    "colorName": "Vert fluo",
+    "zone": 4,
+    "grade": 6,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-09",
+    "color": "#e53935",
+    "colorName": "Rouge",
+    "zone": 4,
+    "grade": 4,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z4-10",
+    "color": "#224df9",
+    "colorName": "Bleu",
+    "zone": 4,
+    "grade": 3,
+    "photo": "photos/",
+    "videos": []
+  }
 ]
