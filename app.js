@@ -1,8 +1,14 @@
-"use strict";
+import { firebaseConfig } from "./firebase-config.js";
 
+const FIREBASE_URL = "https://www.gstatic.com/firebasejs/10.14.1";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MIN_GRADE = 1;
 const MAX_GRADE = 10;
+const DEFAULT_AVERAGE = 10; // shown for a boulder nobody has graded yet
+const NAME_MAX = 20;
+const NAME_STORAGE_KEY = "blocs.name";
+const REFRESH_AFTER_MS = 15000;
+const ERROR_NETWORK = "Impossible de joindre la base de données. Vérifie ta connexion et réessaie.";
 
 const state = {
   zones: [],
@@ -10,6 +16,10 @@ const state = {
   zone: "all", // "all" or a zone id (number)
   min: MIN_GRADE,
   max: MAX_GRADE,
+  votes: null, // { boulderId: { nameKey: { name, grade } } }, null = not loaded
+  lastFetch: 0,
+  currentId: null, // boulder shown in the detail view
+  selectedBar: null, // grade selected in the chart
 };
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +30,129 @@ async function loadJson(path) {
   return response.json();
 }
 
+/* ---------- Local storage (remembered name) ---------- */
+
+function loadName() {
+  try {
+    return localStorage.getItem(NAME_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveName(name) {
+  try {
+    localStorage.setItem(NAME_STORAGE_KEY, name);
+  } catch {
+    /* storage unavailable: the name just won't be remembered */
+  }
+}
+
+/* ---------- Database (Firestore, one document: grades/all) ---------- */
+
+let fb = null; // set once the Firebase SDK is loaded
+
+async function connectFirebase() {
+  const [appModule, fsModule] = await Promise.all([
+    import(`${FIREBASE_URL}/firebase-app.js`),
+    import(`${FIREBASE_URL}/firebase-firestore.js`),
+  ]);
+  const db = fsModule.getFirestore(appModule.initializeApp(firebaseConfig));
+  fb = {
+    ref: fsModule.doc(db, "grades", "all"),
+    getDoc: fsModule.getDoc,
+    setDoc: fsModule.setDoc,
+    updateDoc: fsModule.updateDoc,
+    deleteField: fsModule.deleteField,
+    FieldPath: fsModule.FieldPath,
+  };
+}
+
+// Reads all grades (one document read). Returns true on success.
+async function fetchVotes() {
+  try {
+    if (!fb) await connectFirebase();
+    const snapshot = await fb.getDoc(fb.ref);
+    state.votes = snapshot.exists() ? snapshot.data() : {};
+    state.lastFetch = Date.now();
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+let inflight = null;
+
+function refreshVotes() {
+  if (inflight) return inflight;
+  if (state.votes && Date.now() - state.lastFetch < REFRESH_AFTER_MS) return Promise.resolve(true);
+  inflight = fetchVotes()
+    .then((ok) => {
+      syncUI();
+      return ok;
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  return inflight;
+}
+
+function syncUI() {
+  $("notice").hidden = state.votes !== null;
+  render();
+  if (state.currentId) renderGrades();
+}
+
+/* ---------- Grade statistics ---------- */
+
+function nameKey(name) {
+  return `u_${name.normalize("NFC").toLocaleLowerCase("fr")}`;
+}
+
+function cleanName(raw) {
+  const name = raw.normalize("NFC").replace(/\s+/g, " ").trim();
+  return name.length >= 1 && name.length <= NAME_MAX ? name : "";
+}
+
+function isValidGrade(value) {
+  return Number.isInteger(value) && value >= MIN_GRADE && value <= MAX_GRADE;
+}
+
+function statsFor(boulderId) {
+  const entries = state.votes ? Object.values(state.votes[boulderId] || {}) : [];
+  const counts = new Array(MAX_GRADE + 1).fill(0);
+  const names = Array.from({ length: MAX_GRADE + 1 }, () => []);
+  let sum = 0;
+  let n = 0;
+  for (const vote of entries) {
+    if (!vote || !isValidGrade(vote.grade)) continue;
+    counts[vote.grade] += 1;
+    names[vote.grade].push(String(vote.name));
+    sum += vote.grade;
+    n += 1;
+  }
+  for (const list of names) list.sort((a, b) => a.localeCompare(b, "fr"));
+  let avg = null; // null = grades not available
+  if (n > 0) avg = sum / n;
+  else if (state.votes) avg = DEFAULT_AVERAGE;
+  return { n, avg, counts, names };
+}
+
+function formatAverage(avg) {
+  return avg === null ? "–" : avg.toFixed(1);
+}
+
+/* ---------- Colors ---------- */
+
+// Solid color, or diagonal stripes when the boulder has a second color.
+function colorBackground(boulder, stripe) {
+  if (!boulder.color2) return boulder.color;
+  return `repeating-linear-gradient(45deg, ${boulder.color} 0 ${stripe}px, ${boulder.color2} ${stripe}px ${stripe * 2}px)`;
+}
+
+/* ---------- Init ---------- */
+
 async function init() {
   try {
     const [zoneData, boulders] = await Promise.all([
@@ -29,28 +162,19 @@ async function init() {
     state.zones = zoneData.zones;
     state.boulders = boulders;
     buildMap(zoneData);
-    buildGradeSelects();
-    $("close").addEventListener("click", closeDetail);
-    $("detail").addEventListener("close", onDetailClosed);
-    $("player-close").addEventListener("click", () => $("player").close());
-    $("player").addEventListener("close", () => $("player-frame").replaceChildren());
+    buildGradeControls();
+    buildRateGrid();
+    bindDialogs();
     window.addEventListener("hashchange", syncDetailWithHash);
-    render();
+    syncUI();
     syncDetailWithHash();
+    refreshVotes();
   } catch (error) {
     console.error(error);
     $("list").innerHTML = "";
     $("empty").hidden = false;
     $("empty").textContent = "Impossible de charger les données.";
   }
-}
-
-/* ---------- Colors ---------- */
-
-// Solid color, or diagonal stripes when the boulder has a second color.
-function colorBackground(boulder, stripe) {
-  if (!boulder.color2) return boulder.color;
-  return `repeating-linear-gradient(45deg, ${boulder.color} 0 ${stripe}px, ${boulder.color2} ${stripe}px ${stripe * 2}px)`;
 }
 
 /* ---------- Map ---------- */
@@ -104,18 +228,15 @@ function setZone(zone) {
   render();
 }
 
-/* ---------- Filters ---------- */
+/* ---------- Level filter ---------- */
 
-function buildGradeSelects() {
+function buildGradeControls() {
   for (const id of ["min-grade", "max-grade"]) {
     const select = $(id);
     for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
       select.add(new Option(String(grade), String(grade)));
     }
   }
-  $("min-grade").value = String(state.min);
-  $("max-grade").value = String(state.max);
-
   $("min-grade").addEventListener("change", (event) => {
     state.min = Number(event.target.value);
     if (state.max < state.min) state.max = state.min;
@@ -126,20 +247,30 @@ function buildGradeSelects() {
     if (state.min > state.max) state.min = state.max;
     render();
   });
+  $("reset-grade").addEventListener("click", () => {
+    state.min = MIN_GRADE;
+    state.max = MAX_GRADE;
+    render();
+  });
 }
 
 /* ---------- List ---------- */
 
-function visibleBoulders() {
-  return state.boulders
-    .filter((b) => state.zone === "all" || b.zone === state.zone)
-    .filter((b) => b.grade >= state.min && b.grade <= state.max)
-    .sort((a, b) => a.grade - b.grade || a.zone - b.zone || a.id.localeCompare(b.id));
-}
-
 function zoneName(id) {
   const zone = state.zones.find((z) => z.id === id);
   return zone ? zone.name : `Zone ${id}`;
+}
+
+function visibleBoulders() {
+  return state.boulders
+    .map((boulder) => ({ boulder, stats: statsFor(boulder.id) }))
+    .filter(({ boulder }) => state.zone === "all" || boulder.zone === state.zone)
+    .filter(({ stats }) => stats.avg === null || (Math.round(stats.avg) >= state.min && Math.round(stats.avg) <= state.max))
+    .sort((a, b) => {
+      const gradeA = a.stats.avg ?? DEFAULT_AVERAGE;
+      const gradeB = b.stats.avg ?? DEFAULT_AVERAGE;
+      return gradeA - gradeB || a.boulder.zone - b.boulder.zone || a.boulder.id.localeCompare(b.boulder.id);
+    });
 }
 
 function render() {
@@ -156,10 +287,10 @@ function render() {
   $("count").textContent = `(${items.length})`;
   $("empty").hidden = items.length > 0;
   $("empty").textContent = "Aucun bloc ne correspond à ces filtres.";
-  $("list").replaceChildren(...items.map(renderItem));
+  $("list").replaceChildren(...items.map(({ boulder, stats }) => renderItem(boulder, stats)));
 }
 
-function renderItem(boulder) {
+function renderItem(boulder, stats) {
   const li = document.createElement("li");
   const button = document.createElement("button");
   button.type = "button";
@@ -177,7 +308,8 @@ function renderItem(boulder) {
   title.textContent = boulder.colorName;
   const sub = document.createElement("div");
   sub.className = "item-sub";
-  sub.textContent = zoneName(boulder.zone);
+  const votes = stats.n === 0 ? "pas encore noté" : `${stats.n} note${stats.n > 1 ? "s" : ""}`;
+  sub.textContent = stats.avg === null ? zoneName(boulder.zone) : `${zoneName(boulder.zone)} · ${votes}`;
   main.append(title, sub);
 
   const grade = document.createElement("span");
@@ -185,7 +317,7 @@ function renderItem(boulder) {
   const gradeLabel = document.createElement("small");
   gradeLabel.textContent = "Niveau";
   const gradeValue = document.createElement("strong");
-  gradeValue.textContent = boulder.grade;
+  gradeValue.textContent = formatAverage(stats.avg);
   grade.append(gradeLabel, gradeValue);
 
   button.append(swatch, main, grade);
@@ -210,10 +342,17 @@ function closeDetail() {
 
 function onDetailClosed() {
   if ($("player").open) $("player").close();
+  if ($("name-dialog").open) $("name-dialog").close();
   $("beta-videos").replaceChildren();
+  state.currentId = null;
+  state.selectedBar = null;
   if (location.hash) {
     history.replaceState(null, "", location.pathname + location.search);
   }
+}
+
+function currentBoulder() {
+  return state.boulders.find((b) => b.id === state.currentId);
 }
 
 function syncDetailWithHash() {
@@ -224,15 +363,19 @@ function syncDetailWithHash() {
     if (dialog.open) dialog.close();
     return;
   }
+  if (state.currentId !== boulder.id) state.selectedBar = null;
+  state.currentId = boulder.id;
+  $("rate-status").textContent = "";
   fillDetail(boulder);
   if (!dialog.open) dialog.showModal();
+  refreshVotes();
 }
 
 function fillDetail(boulder) {
   const zone = zoneName(boulder.zone);
   $("detail-title").textContent = `${boulder.colorName} - ${zone}`;
-  $("detail-grade").textContent = `Niveau ${boulder.grade}`;
   $("detail-photo").replaceChildren(buildPhoto(boulder));
+  renderGrades();
   fillBeta(boulder, zone);
 }
 
@@ -244,13 +387,236 @@ function buildPhoto(boulder) {
     div.textContent = "Photo à venir";
     return div;
   };
-  if (!boulder.photo) return fallback();
+  // An empty value or a bare folder ("photos/") means no photo yet.
+  if (!boulder.photo || boulder.photo.endsWith("/")) return fallback();
 
   const img = document.createElement("img");
   img.src = boulder.photo;
   img.alt = `Bloc ${boulder.colorName}, ${zoneName(boulder.zone)}`;
   img.addEventListener("error", () => img.replaceWith(fallback()));
   return img;
+}
+
+/* ---------- Grades: chart and rating buttons ---------- */
+
+function renderGrades() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  const stats = statsFor(boulder.id);
+
+  if (stats.avg === null) {
+    $("detail-grade").textContent = "Niveau –";
+  } else {
+    const votes = stats.n === 0 ? "pas encore noté" : `${stats.n} note${stats.n > 1 ? "s" : ""}`;
+    $("detail-grade").textContent = `Niveau ${formatAverage(stats.avg)} · ${votes}`;
+  }
+
+  renderChart(stats);
+  renderVoters(stats);
+  renderMyVote(boulder.id);
+}
+
+function renderChart(stats) {
+  const tallest = Math.max(1, ...stats.counts.slice(MIN_GRADE));
+  const columns = [];
+  for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
+    const count = stats.counts[grade];
+    const column = document.createElement("button");
+    column.type = "button";
+    column.className = "bar-col";
+    column.classList.toggle("selected", state.selectedBar === grade);
+    column.setAttribute("aria-pressed", String(state.selectedBar === grade));
+    column.setAttribute("aria-label", `Niveau ${grade} : ${count} grimpeur${count > 1 ? "s" : ""}`);
+    column.addEventListener("click", () => {
+      state.selectedBar = state.selectedBar === grade ? null : grade;
+      renderGrades();
+    });
+
+    const countLabel = document.createElement("span");
+    countLabel.className = "bar-count";
+    countLabel.textContent = count > 0 ? String(count) : "";
+
+    const track = document.createElement("span");
+    track.className = "bar-track";
+    const fill = document.createElement("span");
+    fill.className = "bar-fill";
+    fill.style.height = count > 0 ? `${Math.max(10, (count / tallest) * 100)}%` : "3px";
+    track.appendChild(fill);
+
+    const gradeLabel = document.createElement("span");
+    gradeLabel.className = "bar-grade";
+    gradeLabel.textContent = String(grade);
+
+    column.append(countLabel, track, gradeLabel);
+    columns.push(column);
+  }
+  $("chart").replaceChildren(...columns);
+}
+
+function renderVoters(stats) {
+  const grade = state.selectedBar;
+  const voters = $("voters");
+  if (grade === null) {
+    voters.textContent = state.votes ? "" : "Notes indisponibles pour le moment.";
+    return;
+  }
+  const names = stats.names[grade];
+  voters.textContent = names.length
+    ? `Niveau ${grade} : ${names.join(", ")}`
+    : `Personne n'a donné le niveau ${grade}.`;
+}
+
+function renderMyVote(boulderId) {
+  const element = $("my-vote");
+  const name = loadName();
+  const mine = name && state.votes && state.votes[boulderId] && state.votes[boulderId][nameKey(name)];
+  if (mine && isValidGrade(mine.grade)) {
+    element.textContent = `Ta note (${mine.name}) : niveau ${mine.grade}`;
+    element.hidden = false;
+  } else {
+    element.hidden = true;
+  }
+}
+
+function buildRateGrid() {
+  const buttons = [];
+  for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "rate-btn";
+    button.textContent = String(grade);
+    button.setAttribute("aria-label", `Donner le niveau ${grade}`);
+    button.addEventListener("click", () => startRating(grade));
+    buttons.push(button);
+  }
+  $("rate-grid").replaceChildren(...buttons);
+}
+
+let statusTimer = null;
+
+function flashStatus(message) {
+  $("rate-status").textContent = message;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => {
+    $("rate-status").textContent = "";
+  }, 3000);
+}
+
+/* ---------- Rating flow: name prompt, then save / update / delete ---------- */
+
+let pending = null; // { boulderId, grade, name, key }
+
+function bindDialogs() {
+  $("close").addEventListener("click", closeDetail);
+  $("detail").addEventListener("close", onDetailClosed);
+
+  $("player-close").addEventListener("click", () => $("player").close());
+  $("player").addEventListener("close", () => $("player-frame").replaceChildren());
+
+  const nameDialog = $("name-dialog");
+  nameDialog.addEventListener("close", () => {
+    pending = null;
+  });
+  $("name-form").addEventListener("submit", onNameSubmit);
+  $("name-cancel").addEventListener("click", () => nameDialog.close());
+  $("choice-cancel").addEventListener("click", () => nameDialog.close());
+  $("choice-update").addEventListener("click", () => commitVote("save"));
+  $("choice-delete").addEventListener("click", () => commitVote("delete"));
+  $("choice-other").addEventListener("click", () => {
+    showNameStep();
+    $("name-input").value = "";
+    $("name-input").focus();
+  });
+}
+
+function startRating(grade) {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  pending = { boulderId: boulder.id, grade, name: "", key: "" };
+  $("name-intro").textContent = `Niveau ${grade} pour ${boulder.colorName} - ${zoneName(boulder.zone)}.`;
+  $("name-input").value = loadName();
+  showNameStep();
+  $("name-dialog").showModal();
+  $("name-input").select();
+}
+
+function showNameStep() {
+  $("name-form").hidden = false;
+  $("choice").hidden = true;
+  $("name-error").textContent = "";
+}
+
+function showChoiceStep(existing) {
+  $("name-form").hidden = true;
+  $("choice").hidden = false;
+  $("name-error").textContent = "";
+  $("choice-text").textContent = `« ${existing.name} » a déjà noté ce bloc : niveau ${existing.grade}.`;
+  $("choice-update").textContent =
+    existing.grade === pending.grade
+      ? `Garder le niveau ${pending.grade}`
+      : `Mettre à jour : ${existing.grade} → ${pending.grade}`;
+}
+
+function setBusy(busy) {
+  for (const element of $("name-dialog").querySelectorAll("button, input")) {
+    element.disabled = busy;
+  }
+}
+
+async function onNameSubmit(event) {
+  event.preventDefault();
+  if (!pending) return;
+  const name = cleanName($("name-input").value);
+  if (!name) {
+    $("name-error").textContent = `Entre un nom (${NAME_MAX} caractères maximum).`;
+    return;
+  }
+
+  setBusy(true);
+  $("name-error").textContent = "";
+  const ok = await fetchVotes(); // always check against fresh data
+  setBusy(false);
+  if (!pending) return; // dialog was closed meanwhile
+  syncUI();
+  if (!ok) {
+    $("name-error").textContent = ERROR_NETWORK;
+    return;
+  }
+
+  pending.name = name;
+  pending.key = nameKey(name);
+  const existing = state.votes[pending.boulderId]?.[pending.key];
+  if (existing && isValidGrade(existing.grade)) {
+    pending.name = existing.name || name; // keep the capitalization first used
+    showChoiceStep({ name: pending.name, grade: existing.grade });
+  } else {
+    await commitVote("save");
+  }
+}
+
+async function commitVote(action) {
+  if (!pending) return;
+  const { boulderId, grade, name, key } = pending;
+  setBusy(true);
+  $("name-error").textContent = "";
+  try {
+    if (action === "delete") {
+      await fb.updateDoc(fb.ref, new fb.FieldPath(boulderId, key), fb.deleteField());
+      if (state.votes[boulderId]) delete state.votes[boulderId][key];
+    } else {
+      await fb.setDoc(fb.ref, { [boulderId]: { [key]: { name, grade } } }, { merge: true });
+      state.votes[boulderId] = { ...(state.votes[boulderId] || {}), [key]: { name, grade } };
+    }
+    saveName(name);
+    setBusy(false);
+    $("name-dialog").close();
+    syncUI();
+    flashStatus(action === "delete" ? "Note supprimée." : "Note enregistrée.");
+  } catch (error) {
+    console.error(error);
+    setBusy(false);
+    $("name-error").textContent = ERROR_NETWORK;
+  }
 }
 
 /* ---------- Beta (videos) ---------- */

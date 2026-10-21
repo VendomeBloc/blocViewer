@@ -10,7 +10,7 @@
 <body>
   <header class="app-header">
     <h1>Blocs de la salle</h1>
-    <p class="subtitle">Choisis une zone, filtre par niveau, regarde la solution.</p>
+    <p class="subtitle">Choisis une zone, filtre par niveau, note les blocs et regarde la beta.</p>
   </header>
 
   <main>
@@ -24,7 +24,10 @@
       <select id="min-grade" aria-label="Niveau minimum"></select>
       <span>à</span>
       <select id="max-grade" aria-label="Niveau maximum"></select>
+      <button id="reset-grade" class="reset" type="button" aria-label="Réinitialiser le niveau" title="Réinitialiser le niveau">&#8635;</button>
     </section>
+
+    <p id="notice" class="notice" hidden>Impossible de charger les notes pour le moment. Les niveaux affichés sont incomplets.</p>
 
     <section aria-labelledby="list-title">
       <h2 id="list-title">Blocs <span id="count" class="count"></span></h2>
@@ -42,9 +45,21 @@
 
     <div id="detail-photo" class="photo"></div>
 
-    <section class="beta" aria-labelledby="beta-title">
+    <section class="panel" aria-labelledby="grades-title">
+      <h3 id="grades-title">Niveau</h3>
+      <p class="panel-help">Notes des grimpeurs. Touche une barre pour voir qui a voté.</p>
+      <div id="chart" class="chart"></div>
+      <p id="voters" class="voters"></p>
+
+      <h4 class="rate-title">Donne ton niveau</h4>
+      <div id="rate-grid" class="rate-grid"></div>
+      <p id="my-vote" class="my-vote" hidden></p>
+      <p id="rate-status" class="rate-status" role="status"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="beta-title">
       <h3 id="beta-title">Beta</h3>
-      <p class="beta-help">Vidéos de résolution du bloc. Touche une vignette pour la regarder en plein écran.</p>
+      <p class="panel-help">Vidéos de résolution du bloc. Touche une vignette pour la regarder en plein écran.</p>
       <div id="beta-videos" class="beta-videos"></div>
       <p id="beta-empty" class="beta-empty" hidden>Pas encore de vidéo pour ce bloc.</p>
       <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
@@ -52,11 +67,38 @@
     </section>
   </dialog>
 
+  <dialog id="name-dialog" class="name-dialog" aria-labelledby="name-title">
+    <h2 id="name-title">Ton nom</h2>
+    <p id="name-intro" class="name-intro"></p>
+
+    <form id="name-form" autocomplete="off">
+      <input id="name-input" type="text" maxlength="20" required
+             autocomplete="nickname" autocapitalize="words" autocorrect="off"
+             placeholder="Prénom ou pseudo" aria-label="Ton nom">
+      <div class="actions">
+        <button id="name-cancel" class="btn secondary" type="button">Annuler</button>
+        <button class="btn primary" type="submit">Valider</button>
+      </div>
+    </form>
+
+    <div id="choice" hidden>
+      <p id="choice-text" class="choice-text"></p>
+      <div class="actions column">
+        <button id="choice-update" class="btn primary" type="button"></button>
+        <button id="choice-delete" class="btn danger" type="button">Supprimer ma note</button>
+        <button id="choice-other" class="btn secondary" type="button">Choisir un autre nom</button>
+        <button id="choice-cancel" class="btn link" type="button">Annuler</button>
+      </div>
+    </div>
+
+    <p id="name-error" class="name-error" role="alert"></p>
+  </dialog>
+
   <dialog id="player" class="player" aria-label="Lecteur vidéo">
     <button id="player-close" class="player-close" type="button" aria-label="Fermer la vidéo">&times;</button>
     <div id="player-frame" class="player-frame"></div>
   </dialog>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
