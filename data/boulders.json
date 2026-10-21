@@ -167,5 +167,53 @@
     "zone": 4,
     "photo": "photos/",
     "videos": []
-  }
+  },
+  {
+    "id": "z3-01",
+    "color": "#ff800d",
+    "colorName": "Orange",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z3-02",
+    "color": "#1a1a1a",
+    "colorName": "Noir",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z3-03",
+    "color": "#f2f2f2",
+    "colorName": "Blanc",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z3-04",
+    "color": "#224df9",
+    "colorName": "Bleu",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z3-05",
+    "color": "#b823f8",
+    "colorName": "Violet",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
+  {
+    "id": "z3-06",
+    "color": "#1b890e",
+    "colorName": "Vert",
+    "zone": 3,
+    "photo": "photos/",
+    "videos": []
+  },
 ]
