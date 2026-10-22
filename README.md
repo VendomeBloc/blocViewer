@@ -1,17 +1,19 @@
 # Blocs de la salle
 
-Static mobile-first site: zone map, boulder list with community grades, detail view with grade chart and "Beta" videos.
-Hosted on GitHub Pages; grades are stored in Firebase Firestore (free Spark plan).
+Static mobile-first site: zone map, boulder list with French grades, detail view with completions, climbers' opinions on the grade and "Beta" videos.
+Hosted on GitHub Pages. Boulders and climbers' records are stored in Firebase Firestore (free Spark plan).
 
 ## Files
 
 - `index.html`, `style.css`, `app.js`: the site itself
 - `firebase-config.js`: Firebase project settings (public identifiers, not secrets)
-- `data/boulders.json`: the boulder list (edit this file)
+- `data/boulders.json`: the boulder list. It is the starting data (see "Boulders"), and a backup
 - `data/zones.json`: the zone polygons and the "Tout" button (coordinates from the floor plan)
-- `photos/`: one photo per boulder, named like the `photo` field
+- `photos/`: the photos, referenced by the `photo` field of each boulder
 
-## Boulder fields
+## Boulders
+
+The boulder list lives in Firestore (`boulders/all`). The first time the site loads and finds no such document, it creates it from `data/boulders.json`. If the database cannot be reached, the site falls back to that file.
 
 ```json
 {
@@ -20,42 +22,53 @@ Hosted on GitHub Pages; grades are stored in Firebase Firestore (free Spark plan
   "color2": "#ffffff",
   "colorName": "Rouge et blanc",
   "zone": 1,
-  "photo": "photos/z1-01.jpg",
+  "grade": "5a",
+  "setter": "Alex",
+  "photo": "photos/2026-z1-01.jpeg",
   "videos": ["https://www.youtube.com/watch?v=XXXXXXXXXXX"]
 }
 ```
 
-- `id`: unique; also the direct link (`https://.../#z1-01`) and the key of the grades in the database
-- `color`: hex color; `colorName`: the name shown on the site
-- `color2`: optional second hex color, shown as diagonal stripes
+- `id`: unique; also the direct link (`https://.../#z1-01`) and the key of the records in the database
+- `color`: hex color of the holds; `colorName`: name shown on the site; `color2`: optional second color (diagonal stripes)
 - `zone`: 1 to 4
-- `photo`: path to the image. Empty or a bare folder (`photos/`) shows a colored placeholder
-- `videos`: list of YouTube links (vertical videos / Shorts work). Use `[]` when there are none
-- There is no `grade` field anymore: the level comes from the climbers' grades
+- `grade`: French scale, one of: `2 3 4a 4b 4c 5a 5b 5c 6a 6a+ 6b 6b+ 6c 6c+ 7a 7a+ 7b 7b+ 7c 7c+`
+- `setter`: route setter's name (optional, shown in the detail view)
+- `photo`: path to the image (JPEG, WebP or PNG; the name is case-sensitive on GitHub Pages). Empty or a bare folder (`photos/`) shows a placeholder
+- `videos`: list of YouTube links (vertical videos / Shorts work), `[]` when none
 
-## How grades work
+### Changing boulders for now
 
-- Each climber grades a boulder from 1 to 10 (whole numbers) and is asked for a name.
-- The name is matched ignoring capitals and extra spaces. If it already graded the boulder, the climber chooses: update, delete, or use another name.
-- A boulder's level is the average of its grades, shown with one decimal. With no grade yet it shows 10.0.
-- The level filter and the list order use the average rounded to a whole number.
-- The detail view shows a bar chart (one bar per grade, number of climbers); tapping a bar lists the names.
+There is no edit mode yet. To change boulders: edit `data/boulders.json` on GitHub, then in the Firebase console (Firestore) delete the `boulders/all` document. The next visit to the site recreates it from the file.
+
+## Grades, completions and opinions
+
+- The displayed grade of a boulder is its set `grade`. Climbers never change it.
+- A climber taps "J'ai réussi", enters a name, and may add an opinion on the grade: a stepper starts on the set grade and moves one grade at a time, at most 3 grades up or down.
+- Opinions need a completion. A completion without opinion is fine.
+- Names are matched ignoring capitals and extra spaces. If a name already has a record on the boulder, the climber chooses: update, delete, or use another name.
+- The detail view shows who completed the boulder and a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the remembered name.
+- Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
 
 ## Database (Firestore)
 
-All grades live in one document, `grades/all`, so each page load costs a single read:
+Two documents, so a page load costs two reads:
 
-```
-{ "z1-01": { "u_max": { "name": "Max", "grade": 7 }, ... }, ... }
-```
+- `boulders/all`: `{ "list": [ ...boulders ] }`
+- `records/all`: `{ "z1-01": { "u_max": { "name": "Max", "vote": "4b" }, ... }, ... }` (`vote` is optional)
 
-Security rules (Firestore > Rules):
+Security rules (Firestore > Rules). No sign-in: anyone using the site can write, but nobody can delete a whole document from the site.
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /grades/all {
+    match /boulders/all {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+    match /records/all {
       allow read: if true;
       allow create, update: if true;
       allow delete: if false;
@@ -64,15 +77,11 @@ service cloud.firestore {
 }
 ```
 
-Anyone with the site can add, change or remove grades (there are no accounts). The rules only prevent deleting the whole document from the site.
-
-### Yearly reset
-
-When you replace the boulders, give the new ones new ids (for example `2027-z1-01`) so old grades don't attach to new routes. To clean up, open the Firebase console > Firestore, and delete the `grades/all` document (the console can delete it; the site cannot).
+The old `grades/all` document (previous 1-10 votes) is no longer used and can be deleted in the console.
 
 ## Adding a submitted video
 
-Climbers tap "Proposer une vidéo" on a boulder, which opens WhatsApp with a prefilled message naming the boulder (including its `id`). They choose the group and paste their YouTube link. To publish it, add the link to that boulder's `videos` list in `data/boulders.json`.
+Climbers tap "Proposer une vidéo" on a boulder, which opens WhatsApp with a prefilled message naming the boulder (including its `id`). They choose the group and paste their YouTube link. To publish it, add the link to that boulder's `videos` list in `data/boulders.json` (then reset `boulders/all` as described above).
 
 ## Run locally
 

@@ -2,27 +2,40 @@ import { firebaseConfig } from "./firebase-config.js";
 
 const FIREBASE_URL = "https://www.gstatic.com/firebasejs/10.14.1";
 const SVG_NS = "http://www.w3.org/2000/svg";
-const MIN_GRADE = 1;
-const MAX_GRADE = 10;
-const DEFAULT_AVERAGE = 10; // shown for a boulder nobody has graded yet
+
+// French boulder scale, easiest to hardest.
+const GRADES = [
+  "2", "3", "4a", "4b", "4c", "5a", "5b", "5c",
+  "6a", "6a+", "6b", "6b+", "6c", "6c+",
+  "7a", "7a+", "7b", "7b+", "7c", "7c+",
+];
+const LAST_GRADE = GRADES.length - 1;
+const VOTE_WINDOW = 3; // a vote can differ from the set grade by at most 3 grades
+
 const NAME_MAX = 20;
 const NAME_STORAGE_KEY = "blocs.name";
+const CACHE_KEY = "blocs.cache.boulders";
+const REQUEST_TIMEOUT_MS = 8000;
+const RETRY_DELAY_MS = 3000;
 const REFRESH_AFTER_MS = 15000;
 const ERROR_NETWORK = "Impossible de joindre la base de données. Vérifie ta connexion et réessaie.";
 
 const state = {
   zones: [],
-  boulders: [],
+  boulders: null, // null while nothing is known yet
   zone: "all", // "all" or a zone id (number)
-  min: MIN_GRADE,
-  max: MAX_GRADE,
-  votes: null, // { boulderId: { nameKey: { name, grade } } }, null = not loaded
+  min: 0, // index in GRADES
+  max: LAST_GRADE,
+  records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
+  recordsExists: false,
   lastFetch: 0,
+  status: "loading", // "loading" | "ok" | "failed"
   currentId: null, // boulder shown in the detail view
-  selectedBar: null, // grade selected in the chart
+  selectedBar: null, // grade index selected in the chart
 };
 
 const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function loadJson(path) {
   const response = await fetch(path);
@@ -30,7 +43,58 @@ async function loadJson(path) {
   return response.json();
 }
 
-/* ---------- Local storage (remembered name) ---------- */
+/* ---------- Grades and their colors ---------- */
+
+function gradeIndex(grade) {
+  return GRADES.indexOf(grade);
+}
+
+// Blue (easiest) -> green -> yellow -> orange -> red -> purple -> black (hardest).
+const GRADE_ANCHORS = ["#2563eb", "#16a34a", "#facc15", "#f97316", "#dc2626", "#7e22ce", "#111111"];
+
+function hexToRgb(hex) {
+  const value = parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+const GRADE_STYLES = GRADES.map((_, index) => {
+  const position = (index / LAST_GRADE) * (GRADE_ANCHORS.length - 1);
+  const segment = Math.min(Math.floor(position), GRADE_ANCHORS.length - 2);
+  const t = position - segment;
+  const from = hexToRgb(GRADE_ANCHORS[segment]);
+  const to = hexToRgb(GRADE_ANCHORS[segment + 1]);
+  const [r, g, b] = from.map((channel, i) => Math.round(channel + (to[i] - channel) * t));
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return { bg: `rgb(${r}, ${g}, ${b})`, fg: brightness >= 150 ? "#111827" : "#ffffff" };
+});
+
+function gradeChip(grade, extraClass = "") {
+  const chip = document.createElement("span");
+  chip.className = `chip ${extraClass}`.trim();
+  const index = gradeIndex(grade);
+  if (index < 0) {
+    chip.textContent = "?";
+    chip.classList.add("unknown");
+  } else {
+    chip.textContent = GRADES[index];
+    chip.style.background = GRADE_STYLES[index].bg;
+    chip.style.color = GRADE_STYLES[index].fg;
+  }
+  return chip;
+}
+
+function voteWindow(baseIndex) {
+  return [Math.max(0, baseIndex - VOTE_WINDOW), Math.min(LAST_GRADE, baseIndex + VOTE_WINDOW)];
+}
+
+/* ---------- Boulder colors (the holds), stripes for two-color boulders ---------- */
+
+function colorBackground(boulder, stripe) {
+  if (!boulder.color2) return boulder.color;
+  return `repeating-linear-gradient(45deg, ${boulder.color} 0 ${stripe}px, ${boulder.color2} ${stripe}px ${stripe * 2}px)`;
+}
+
+/* ---------- Local storage (remembered name, cached boulder list) ---------- */
 
 function loadName() {
   try {
@@ -48,18 +112,46 @@ function saveName(name) {
   }
 }
 
-/* ---------- Database (Firestore, one document: grades/all) ---------- */
+function isValidBoulder(boulder) {
+  return (
+    boulder &&
+    typeof boulder.id === "string" &&
+    Number.isInteger(boulder.zone) &&
+    typeof boulder.color === "string"
+  );
+}
+
+function readCache() {
+  try {
+    const list = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+    return Array.isArray(list) ? list.filter(isValidBoulder) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(list) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(list));
+  } catch {
+    /* storage unavailable: no offline copy */
+  }
+}
+
+/* ---------- Database (Firestore: boulders/all and records/all) ---------- */
 
 let fb = null; // set once the Firebase SDK is loaded
 
 async function connectFirebase() {
+  if (fb) return;
   const [appModule, fsModule] = await Promise.all([
     import(`${FIREBASE_URL}/firebase-app.js`),
     import(`${FIREBASE_URL}/firebase-firestore.js`),
   ]);
   const db = fsModule.getFirestore(appModule.initializeApp(firebaseConfig));
   fb = {
-    ref: fsModule.doc(db, "grades", "all"),
+    boulders: fsModule.doc(db, "boulders", "all"),
+    records: fsModule.doc(db, "records", "all"),
     getDoc: fsModule.getDoc,
     setDoc: fsModule.setDoc,
     updateDoc: fsModule.updateDoc,
@@ -68,13 +160,50 @@ async function connectFirebase() {
   };
 }
 
-// Reads all grades (one document read). Returns true on success.
-async function fetchVotes() {
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function loadStaticBoulders() {
+  const data = await loadJson("data/boulders.json");
+  return Array.isArray(data) ? data.filter(isValidBoulder) : [];
+}
+
+function applyRecordsSnapshot(snapshot) {
+  state.recordsExists = snapshot.exists();
+  state.records = snapshot.exists() ? snapshot.data() : {};
+  state.lastFetch = Date.now();
+}
+
+// Reads the boulder list and all records (two document reads).
+// If the boulder document does not exist yet, it is created from data/boulders.json.
+async function fetchAllUnbounded() {
+  await connectFirebase();
+  const [boulderSnap, recordsSnap] = await Promise.all([fb.getDoc(fb.boulders), fb.getDoc(fb.records)]);
+  let list;
+  if (boulderSnap.exists()) {
+    const data = boulderSnap.data();
+    list = Array.isArray(data.list) ? data.list.filter(isValidBoulder) : [];
+  } else {
+    list = await loadStaticBoulders();
+    await fb.setDoc(fb.boulders, { list });
+  }
+  state.boulders = list;
+  writeCache(list);
+  applyRecordsSnapshot(recordsSnap);
+  if (state.status === "failed") {
+    state.status = "ok"; // a slow attempt finally succeeded
+    syncUI();
+  }
+}
+
+async function fetchAll() {
   try {
-    if (!fb) await connectFirebase();
-    const snapshot = await fb.getDoc(fb.ref);
-    state.votes = snapshot.exists() ? snapshot.data() : {};
-    state.lastFetch = Date.now();
+    await withTimeout(fetchAllUnbounded(), REQUEST_TIMEOUT_MS);
     return true;
   } catch (error) {
     console.error(error);
@@ -82,12 +211,62 @@ async function fetchVotes() {
   }
 }
 
+// Reads only the records (one document read). Used for fresh checks before writing.
+async function fetchRecords() {
+  try {
+    const snapshot = await withTimeout(
+      (async () => {
+        await connectFirebase();
+        return fb.getDoc(fb.records);
+      })(),
+      REQUEST_TIMEOUT_MS,
+    );
+    applyRecordsSnapshot(snapshot);
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+let loadingNow = false;
+
+// The error notice only appears after two failed attempts, never while loading.
+async function loadData() {
+  if (loadingNow) return;
+  loadingNow = true;
+  state.status = "loading";
+  syncUI();
+
+  let ok = false;
+  for (let attempt = 1; attempt <= 2 && !ok; attempt++) {
+    ok = await fetchAll();
+    if (!ok && attempt === 1) await sleep(RETRY_DELAY_MS);
+  }
+
+  if (ok) {
+    state.status = "ok";
+  } else {
+    state.status = "failed";
+    if (!state.boulders) {
+      try {
+        state.boulders = await loadStaticBoulders();
+      } catch {
+        state.boulders = [];
+      }
+    }
+  }
+  loadingNow = false;
+  syncUI();
+  syncDetailWithHash();
+}
+
 let inflight = null;
 
-function refreshVotes() {
+function refreshRecords() {
   if (inflight) return inflight;
-  if (state.votes && Date.now() - state.lastFetch < REFRESH_AFTER_MS) return Promise.resolve(true);
-  inflight = fetchVotes()
+  if (state.records && Date.now() - state.lastFetch < REFRESH_AFTER_MS) return Promise.resolve(true);
+  inflight = fetchRecords()
     .then((ok) => {
       syncUI();
       return ok;
@@ -99,12 +278,12 @@ function refreshVotes() {
 }
 
 function syncUI() {
-  $("notice").hidden = state.votes !== null;
+  $("notice").hidden = state.status !== "failed";
   render();
-  if (state.currentId) renderGrades();
+  if (state.currentId) renderDetail();
 }
 
-/* ---------- Grade statistics ---------- */
+/* ---------- Records (completions and optional votes) ---------- */
 
 function nameKey(name) {
   return `u_${name.normalize("NFC").toLocaleLowerCase("fr")}`;
@@ -115,65 +294,57 @@ function cleanName(raw) {
   return name.length >= 1 && name.length <= NAME_MAX ? name : "";
 }
 
-function isValidGrade(value) {
-  return Number.isInteger(value) && value >= MIN_GRADE && value <= MAX_GRADE;
+function byName(a, b) {
+  return a.localeCompare(b, "fr");
 }
 
-function statsFor(boulderId) {
-  const entries = state.votes ? Object.values(state.votes[boulderId] || {}) : [];
-  const counts = new Array(MAX_GRADE + 1).fill(0);
-  const names = Array.from({ length: MAX_GRADE + 1 }, () => []);
-  let sum = 0;
-  let n = 0;
-  for (const vote of entries) {
-    if (!vote || !isValidGrade(vote.grade)) continue;
-    counts[vote.grade] += 1;
-    names[vote.grade].push(String(vote.name));
-    sum += vote.grade;
-    n += 1;
+function recordsInfo(boulderId) {
+  if (!state.records) return null;
+  const entries = Object.values(state.records[boulderId] || {}).filter((e) => e && typeof e.name === "string");
+  const voteCounts = new Array(GRADES.length).fill(0);
+  const voters = GRADES.map(() => []);
+  let votes = 0;
+  for (const entry of entries) {
+    const index = gradeIndex(entry.vote);
+    if (index >= 0) {
+      voteCounts[index] += 1;
+      voters[index].push(entry.name);
+      votes += 1;
+    }
   }
-  for (const list of names) list.sort((a, b) => a.localeCompare(b, "fr"));
-  let avg = null; // null = grades not available
-  if (n > 0) avg = sum / n;
-  else if (state.votes) avg = DEFAULT_AVERAGE;
-  return { n, avg, counts, names };
+  voters.forEach((list) => list.sort(byName));
+  return { done: entries.length, names: entries.map((e) => e.name).sort(byName), voteCounts, voters, votes };
 }
 
-function formatAverage(avg) {
-  return avg === null ? "–" : avg.toFixed(1);
+function myEntry(boulderId) {
+  const name = loadName();
+  if (!name || !state.records) return null;
+  return (state.records[boulderId] || {})[nameKey(name)] || null;
 }
 
-/* ---------- Colors ---------- */
-
-// Solid color, or diagonal stripes when the boulder has a second color.
-function colorBackground(boulder, stripe) {
-  if (!boulder.color2) return boulder.color;
-  return `repeating-linear-gradient(45deg, ${boulder.color} 0 ${stripe}px, ${boulder.color2} ${stripe}px ${stripe * 2}px)`;
+function completionText(count) {
+  if (count === 0) return "aucune réussite";
+  return count === 1 ? "1 réussite" : `${count} réussites`;
 }
 
 /* ---------- Init ---------- */
 
 async function init() {
   try {
-    const [zoneData, boulders] = await Promise.all([
-      loadJson("data/zones.json"),
-      loadJson("data/boulders.json"),
-    ]);
+    const zoneData = await loadJson("data/zones.json");
     state.zones = zoneData.zones;
-    state.boulders = boulders;
+    state.boulders = readCache();
     buildMap(zoneData);
     buildGradeControls();
-    buildRateGrid();
-    bindDialogs();
+    bindUI();
     window.addEventListener("hashchange", syncDetailWithHash);
     syncUI();
     syncDetailWithHash();
-    refreshVotes();
+    loadData();
   } catch (error) {
     console.error(error);
-    $("list").innerHTML = "";
-    $("empty").hidden = false;
-    $("empty").textContent = "Impossible de charger les données.";
+    $("loading").hidden = false;
+    $("loading").textContent = "Impossible de charger l'application.";
   }
 }
 
@@ -233,9 +404,7 @@ function setZone(zone) {
 function buildGradeControls() {
   for (const id of ["min-grade", "max-grade"]) {
     const select = $(id);
-    for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
-      select.add(new Option(String(grade), String(grade)));
-    }
+    GRADES.forEach((grade, index) => select.add(new Option(grade, String(index))));
   }
   $("min-grade").addEventListener("change", (event) => {
     state.min = Number(event.target.value);
@@ -248,8 +417,8 @@ function buildGradeControls() {
     render();
   });
   $("reset-grade").addEventListener("click", () => {
-    state.min = MIN_GRADE;
-    state.max = MAX_GRADE;
+    state.min = 0;
+    state.max = LAST_GRADE;
     render();
   });
 }
@@ -263,13 +432,15 @@ function zoneName(id) {
 
 function visibleBoulders() {
   return state.boulders
-    .map((boulder) => ({ boulder, stats: statsFor(boulder.id) }))
-    .filter(({ boulder }) => state.zone === "all" || boulder.zone === state.zone)
-    .filter(({ stats }) => stats.avg === null || (Math.round(stats.avg) >= state.min && Math.round(stats.avg) <= state.max))
+    .filter((boulder) => state.zone === "all" || boulder.zone === state.zone)
+    .filter((boulder) => {
+      const index = gradeIndex(boulder.grade);
+      return index < 0 || (index >= state.min && index <= state.max);
+    })
     .sort((a, b) => {
-      const gradeA = a.stats.avg ?? DEFAULT_AVERAGE;
-      const gradeB = b.stats.avg ?? DEFAULT_AVERAGE;
-      return gradeA - gradeB || a.boulder.zone - b.boulder.zone || a.boulder.id.localeCompare(b.boulder.id);
+      const gradeA = gradeIndex(a.grade) < 0 ? 99 : gradeIndex(a.grade);
+      const gradeB = gradeIndex(b.grade) < 0 ? 99 : gradeIndex(b.grade);
+      return gradeA - gradeB || a.zone - b.zone || a.id.localeCompare(b.id);
     });
 }
 
@@ -283,23 +454,50 @@ function render() {
     polygon.setAttribute("aria-pressed", String(active));
   }
 
+  const loading = state.boulders === null;
+  $("loading").hidden = !loading;
+  if (loading) {
+    $("count").textContent = "";
+    $("empty").hidden = true;
+    $("list").replaceChildren();
+    return;
+  }
+
   const items = visibleBoulders();
   $("count").textContent = `(${items.length})`;
   $("empty").hidden = items.length > 0;
   $("empty").textContent = "Aucun bloc ne correspond à ces filtres.";
-  $("list").replaceChildren(...items.map(({ boulder, stats }) => renderItem(boulder, stats)));
+  $("list").replaceChildren(...items.map(renderItem));
 }
 
-function renderItem(boulder, stats) {
+function renderItem(boulder) {
+  const info = recordsInfo(boulder.id);
+
   const li = document.createElement("li");
   const button = document.createElement("button");
   button.type = "button";
   button.className = "item";
   button.addEventListener("click", () => openDetail(boulder.id));
 
+  const zone = document.createElement("span");
+  zone.className = "zone-badge";
+  const zoneLabel = document.createElement("small");
+  zoneLabel.textContent = "zone";
+  const zoneNumber = document.createElement("strong");
+  zoneNumber.textContent = String(boulder.zone);
+  zone.append(zoneLabel, zoneNumber);
+
   const swatch = document.createElement("span");
   swatch.className = "swatch";
   swatch.style.background = colorBackground(boulder, 6);
+  if (myEntry(boulder.id)) {
+    const mark = document.createElement("span");
+    mark.className = "done-mark";
+    mark.textContent = "✓";
+    mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "Réussi");
+    swatch.appendChild(mark);
+  }
 
   const main = document.createElement("span");
   main.className = "item-main";
@@ -308,19 +506,10 @@ function renderItem(boulder, stats) {
   title.textContent = boulder.colorName;
   const sub = document.createElement("div");
   sub.className = "item-sub";
-  const votes = stats.n === 0 ? "pas encore noté" : `${stats.n} note${stats.n > 1 ? "s" : ""}`;
-  sub.textContent = stats.avg === null ? zoneName(boulder.zone) : `${zoneName(boulder.zone)} · ${votes}`;
+  sub.textContent = info ? completionText(info.done) : "";
   main.append(title, sub);
 
-  const grade = document.createElement("span");
-  grade.className = "grade";
-  const gradeLabel = document.createElement("small");
-  gradeLabel.textContent = "Niveau";
-  const gradeValue = document.createElement("strong");
-  gradeValue.textContent = formatAverage(stats.avg);
-  grade.append(gradeLabel, gradeValue);
-
-  button.append(swatch, main, grade);
+  button.append(zone, swatch, main, gradeChip(boulder.grade));
   li.appendChild(button);
   return li;
 }
@@ -341,42 +530,71 @@ function closeDetail() {
 }
 
 function onDetailClosed() {
+  // The "close" event arrives asynchronously: if another boulder was opened in
+  // the meantime, this cleanup must not touch it.
+  if ($("detail").open) return;
+  const closedId = state.currentId;
   if ($("player").open) $("player").close();
-  if ($("name-dialog").open) $("name-dialog").close();
+  closeForm();
   $("beta-videos").replaceChildren();
+  $("record-status").textContent = "";
   state.currentId = null;
   state.selectedBar = null;
-  if (location.hash) {
+  if (location.hash && decodeURIComponent(location.hash.slice(1)) === closedId) {
     history.replaceState(null, "", location.pathname + location.search);
   }
 }
 
 function currentBoulder() {
-  return state.boulders.find((b) => b.id === state.currentId);
+  return (state.boulders || []).find((b) => b.id === state.currentId);
 }
 
 function syncDetailWithHash() {
-  const id = decodeURIComponent(location.hash.slice(1));
   const dialog = $("detail");
+  const id = decodeURIComponent(location.hash.slice(1));
+  if (!id) {
+    if (dialog.open) dialog.close();
+    return;
+  }
+  if (!state.boulders) return; // list not loaded yet; called again once it is
   const boulder = state.boulders.find((b) => b.id === id);
   if (!boulder) {
     if (dialog.open) dialog.close();
     return;
   }
-  if (state.currentId !== boulder.id) state.selectedBar = null;
+  const fresh = state.currentId !== boulder.id || !dialog.open;
   state.currentId = boulder.id;
-  $("rate-status").textContent = "";
-  fillDetail(boulder);
+  if (fresh) {
+    state.selectedBar = null;
+    closeForm();
+    $("record-status").textContent = "";
+    $("detail-title").textContent = `${boulder.colorName} - ${zoneName(boulder.zone)}`;
+    $("detail-photo").replaceChildren(buildPhoto(boulder));
+    fillBeta(boulder, zoneName(boulder.zone));
+  }
+  renderDetail();
   if (!dialog.open) dialog.showModal();
-  refreshVotes();
+  refreshRecords();
 }
 
-function fillDetail(boulder) {
-  const zone = zoneName(boulder.zone);
-  $("detail-title").textContent = `${boulder.colorName} - ${zone}`;
-  $("detail-photo").replaceChildren(buildPhoto(boulder));
-  renderGrades();
-  fillBeta(boulder, zone);
+function renderDetail() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  renderMeta(boulder);
+  renderDone(boulder);
+  renderVotes(boulder);
+  if (!$("record-form").hidden) updateFormState();
+}
+
+function renderMeta(boulder) {
+  const parts = [gradeChip(boulder.grade, "big")];
+  if (boulder.setter) {
+    const setter = document.createElement("span");
+    setter.className = "setter";
+    setter.textContent = `Ouvert par ${boulder.setter}`;
+    parts.push(setter);
+  }
+  $("detail-meta").replaceChildren(...parts);
 }
 
 function buildPhoto(boulder) {
@@ -397,39 +615,58 @@ function buildPhoto(boulder) {
   return img;
 }
 
-/* ---------- Grades: chart and rating buttons ---------- */
+/* ---------- Completions ---------- */
 
-function renderGrades() {
-  const boulder = currentBoulder();
-  if (!boulder) return;
-  const stats = statsFor(boulder.id);
-
-  if (stats.avg === null) {
-    $("detail-grade").textContent = "Niveau –";
+function renderDone(boulder) {
+  const info = recordsInfo(boulder.id);
+  const count = $("done-count");
+  const names = $("done-names");
+  if (!info) {
+    count.textContent = state.status === "failed" ? "Réussites indisponibles pour le moment." : "Chargement…";
+    names.textContent = "";
+  } else if (info.done === 0) {
+    count.textContent = "Personne n'a encore réussi ce bloc.";
+    names.textContent = "";
   } else {
-    const votes = stats.n === 0 ? "pas encore noté" : `${stats.n} note${stats.n > 1 ? "s" : ""}`;
-    $("detail-grade").textContent = `Niveau ${formatAverage(stats.avg)} · ${votes}`;
+    count.textContent = info.done === 1 ? "1 grimpeur a réussi ce bloc." : `${info.done} grimpeurs ont réussi ce bloc.`;
+    names.textContent = info.names.join(", ");
   }
 
-  renderChart(stats);
-  renderVoters(stats);
-  renderMyVote(boulder.id);
+  const mine = myEntry(boulder.id);
+  const myRecord = $("my-record");
+  if (mine) {
+    myRecord.textContent = `Tu as réussi ce bloc (${mine.name})${gradeIndex(mine.vote) >= 0 ? ` · ton avis : ${mine.vote}` : ""}`;
+    myRecord.hidden = false;
+  } else {
+    myRecord.hidden = true;
+  }
 }
 
-function renderChart(stats) {
-  const tallest = Math.max(1, ...stats.counts.slice(MIN_GRADE));
+/* ---------- Votes chart (window of +/-3 grades around the set grade) ---------- */
+
+function renderVotes(boulder) {
+  const base = gradeIndex(boulder.grade);
+  $("votes-panel").hidden = base < 0;
+  if (base < 0) return;
+
+  const info = recordsInfo(boulder.id);
+  const [low, high] = voteWindow(base);
+  const counts = info ? info.voteCounts : GRADES.map(() => 0);
+  const tallest = Math.max(1, ...counts.slice(low, high + 1));
+
   const columns = [];
-  for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
-    const count = stats.counts[grade];
+  for (let index = low; index <= high; index++) {
+    const count = counts[index];
     const column = document.createElement("button");
     column.type = "button";
     column.className = "bar-col";
-    column.classList.toggle("selected", state.selectedBar === grade);
-    column.setAttribute("aria-pressed", String(state.selectedBar === grade));
-    column.setAttribute("aria-label", `Niveau ${grade} : ${count} grimpeur${count > 1 ? "s" : ""}`);
+    column.classList.toggle("selected", state.selectedBar === index);
+    column.classList.toggle("base", index === base);
+    column.setAttribute("aria-pressed", String(state.selectedBar === index));
+    column.setAttribute("aria-label", `Niveau ${GRADES[index]} : ${count} avis`);
     column.addEventListener("click", () => {
-      state.selectedBar = state.selectedBar === grade ? null : grade;
-      renderGrades();
+      state.selectedBar = state.selectedBar === index ? null : index;
+      renderVotes(boulder);
     });
 
     const countLabel = document.createElement("span");
@@ -440,183 +677,216 @@ function renderChart(stats) {
     track.className = "bar-track";
     const fill = document.createElement("span");
     fill.className = "bar-fill";
+    fill.style.background = GRADE_STYLES[index].bg;
     fill.style.height = count > 0 ? `${Math.max(10, (count / tallest) * 100)}%` : "3px";
     track.appendChild(fill);
 
-    const gradeLabel = document.createElement("span");
-    gradeLabel.className = "bar-grade";
-    gradeLabel.textContent = String(grade);
+    const tag = document.createElement("span");
+    tag.className = "bar-tag";
+    tag.textContent = index === base ? "bloc" : "";
 
-    column.append(countLabel, track, gradeLabel);
+    column.append(countLabel, track, gradeChip(GRADES[index], "small"), tag);
     columns.push(column);
   }
-  $("chart").replaceChildren(...columns);
+  const chart = $("chart");
+  chart.style.gridTemplateColumns = `repeat(${columns.length}, 1fr)`;
+  chart.replaceChildren(...columns);
+
+  const voters = $("voters");
+  if (!info) {
+    voters.textContent = state.status === "failed" ? "Avis indisponibles pour le moment." : "";
+  } else if (state.selectedBar !== null) {
+    const list = info.voters[state.selectedBar];
+    voters.textContent = list.length
+      ? `${GRADES[state.selectedBar]} : ${list.join(", ")}`
+      : `Personne n'a donné l'avis ${GRADES[state.selectedBar]}.`;
+  } else {
+    voters.textContent = info.votes === 0 ? "Pas encore d'avis." : info.votes === 1 ? "1 avis." : `${info.votes} avis.`;
+  }
 }
 
-function renderVoters(stats) {
-  const grade = state.selectedBar;
-  const voters = $("voters");
-  if (grade === null) {
-    voters.textContent = state.votes ? "" : "Notes indisponibles pour le moment.";
+/* ---------- Record form: name, optional vote, then save / update / delete ---------- */
+
+let pending = null; // { boulderId, name, key, vote }
+let voteIndex = 0;
+
+function bindUI() {
+  $("close").addEventListener("click", closeDetail);
+  $("detail").addEventListener("close", onDetailClosed);
+  // A failed download of the Firebase library is remembered by the browser until
+  // the page reloads, so in that case "Réessayer" reloads the page.
+  $("retry").addEventListener("click", () => {
+    if (fb) loadData();
+    else location.reload();
+  });
+
+  $("player-close").addEventListener("click", () => $("player").close());
+  $("player").addEventListener("close", () => $("player-frame").replaceChildren());
+
+  $("open-form").addEventListener("click", openForm);
+  $("form-cancel").addEventListener("click", closeForm);
+  $("choice-cancel").addEventListener("click", closeForm);
+  $("name-input").addEventListener("input", updateFormState);
+  $("vote-toggle").addEventListener("change", updateFormState);
+  $("step-down").addEventListener("click", () => stepVote(-1));
+  $("step-up").addEventListener("click", () => stepVote(1));
+  $("record-form").addEventListener("submit", onFormSubmit);
+  $("choice-update").addEventListener("click", () => commitRecord("save"));
+  $("choice-delete").addEventListener("click", () => commitRecord("delete"));
+  $("choice-other").addEventListener("click", () => {
+    showFormStep();
+    $("name-input").value = "";
+    updateFormState();
+    $("name-input").focus();
+  });
+}
+
+function openForm() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  voteIndex = Math.max(0, gradeIndex(boulder.grade));
+  $("name-input").value = loadName();
+  $("vote-toggle").checked = false;
+  $("record-status").textContent = "";
+  $("open-form").hidden = true;
+  showFormStep();
+  updateFormState();
+  $("record-form").scrollIntoView({ block: "nearest" });
+}
+
+function closeForm() {
+  pending = null;
+  $("record-form").hidden = true;
+  $("record-choice").hidden = true;
+  $("open-form").hidden = false;
+  $("record-error").textContent = "";
+}
+
+function showFormStep() {
+  $("record-form").hidden = false;
+  $("record-choice").hidden = true;
+  $("record-error").textContent = "";
+}
+
+function stepVote(delta) {
+  voteIndex += delta;
+  updateFormState();
+}
+
+function updateFormState() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  const base = gradeIndex(boulder.grade);
+  const canVote = base >= 0;
+  const voting = canVote && $("vote-toggle").checked;
+
+  $("vote-row").hidden = !canVote;
+  $("stepper").hidden = !voting;
+  $("step-hint").hidden = !voting;
+  if (voting) {
+    const [low, high] = voteWindow(base);
+    voteIndex = Math.min(high, Math.max(low, voteIndex));
+    $("step-value").replaceChildren(gradeChip(GRADES[voteIndex], "big"));
+    $("step-down").disabled = voteIndex <= low;
+    $("step-up").disabled = voteIndex >= high;
+    $("step-hint").textContent =
+      voteIndex === base
+        ? `Même niveau que le bloc (${boulder.grade})`
+        : voteIndex < base
+          ? `Plus facile que le bloc (${boulder.grade})`
+          : `Plus dur que le bloc (${boulder.grade})`;
+  }
+  $("record-submit").disabled = !cleanName($("name-input").value);
+}
+
+function setBusy(busy) {
+  for (const element of document.querySelectorAll("#record-form button, #record-form input, #record-choice button")) {
+    element.disabled = busy;
+  }
+  if (!busy) updateFormState();
+}
+
+async function onFormSubmit(event) {
+  event.preventDefault();
+  const boulder = currentBoulder();
+  const name = cleanName($("name-input").value);
+  if (!boulder || !name) return;
+
+  const base = gradeIndex(boulder.grade);
+  const vote = base >= 0 && $("vote-toggle").checked ? GRADES[voteIndex] : null;
+  pending = { boulderId: boulder.id, name, key: nameKey(name), vote };
+
+  setBusy(true);
+  $("record-error").textContent = "";
+  const ok = await fetchRecords(); // always check against fresh data
+  setBusy(false);
+  if (!pending) return; // closed meanwhile
+  syncUI();
+  if (!ok) {
+    $("record-error").textContent = ERROR_NETWORK;
     return;
   }
-  const names = stats.names[grade];
-  voters.textContent = names.length
-    ? `Niveau ${grade} : ${names.join(", ")}`
-    : `Personne n'a donné le niveau ${grade}.`;
-}
 
-function renderMyVote(boulderId) {
-  const element = $("my-vote");
-  const name = loadName();
-  const mine = name && state.votes && state.votes[boulderId] && state.votes[boulderId][nameKey(name)];
-  if (mine && isValidGrade(mine.grade)) {
-    element.textContent = `Ta note (${mine.name}) : niveau ${mine.grade}`;
-    element.hidden = false;
+  const existing = (state.records[pending.boulderId] || {})[pending.key];
+  if (existing) {
+    showChoiceStep(existing);
   } else {
-    element.hidden = true;
+    await commitRecord("save");
   }
 }
 
-function buildRateGrid() {
-  const buttons = [];
-  for (let grade = MIN_GRADE; grade <= MAX_GRADE; grade++) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "rate-btn";
-    button.textContent = String(grade);
-    button.setAttribute("aria-label", `Donner le niveau ${grade}`);
-    button.addEventListener("click", () => startRating(grade));
-    buttons.push(button);
+function showChoiceStep(existing) {
+  pending.name = existing.name || pending.name; // keep the capitalization first used
+  $("record-form").hidden = true;
+  $("record-choice").hidden = false;
+  $("record-error").textContent = "";
+  const previous = gradeIndex(existing.vote) >= 0 ? ` (avis : ${existing.vote})` : "";
+  $("choice-text").textContent = `« ${pending.name} » a déjà réussi ce bloc${previous}.`;
+  $("choice-update").textContent = pending.vote
+    ? `Mettre à jour (avis : ${pending.vote})`
+    : "Mettre à jour (sans avis)";
+}
+
+async function commitRecord(action) {
+  if (!pending) return;
+  const { boulderId, name, key, vote } = pending;
+  setBusy(true);
+  $("record-error").textContent = "";
+  try {
+    const path = new fb.FieldPath(boulderId, key);
+    if (action === "delete") {
+      await fb.updateDoc(fb.records, path, fb.deleteField());
+      if (state.records[boulderId]) delete state.records[boulderId][key];
+    } else {
+      const entry = vote ? { name, vote } : { name };
+      if (state.recordsExists) {
+        await fb.updateDoc(fb.records, path, entry); // replaces the whole entry
+      } else {
+        await fb.setDoc(fb.records, { [boulderId]: { [key]: entry } });
+      }
+      state.recordsExists = true;
+      state.records[boulderId] = { ...(state.records[boulderId] || {}), [key]: entry };
+    }
+    saveName(name);
+    setBusy(false);
+    closeForm();
+    syncUI();
+    flashStatus(action === "delete" ? "Réussite supprimée." : "Réussite enregistrée.");
+  } catch (error) {
+    console.error(error);
+    setBusy(false);
+    $("record-error").textContent = ERROR_NETWORK;
   }
-  $("rate-grid").replaceChildren(...buttons);
 }
 
 let statusTimer = null;
 
 function flashStatus(message) {
-  $("rate-status").textContent = message;
+  $("record-status").textContent = message;
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => {
-    $("rate-status").textContent = "";
+    $("record-status").textContent = "";
   }, 3000);
-}
-
-/* ---------- Rating flow: name prompt, then save / update / delete ---------- */
-
-let pending = null; // { boulderId, grade, name, key }
-
-function bindDialogs() {
-  $("close").addEventListener("click", closeDetail);
-  $("detail").addEventListener("close", onDetailClosed);
-
-  $("player-close").addEventListener("click", () => $("player").close());
-  $("player").addEventListener("close", () => $("player-frame").replaceChildren());
-
-  const nameDialog = $("name-dialog");
-  nameDialog.addEventListener("close", () => {
-    pending = null;
-  });
-  $("name-form").addEventListener("submit", onNameSubmit);
-  $("name-cancel").addEventListener("click", () => nameDialog.close());
-  $("choice-cancel").addEventListener("click", () => nameDialog.close());
-  $("choice-update").addEventListener("click", () => commitVote("save"));
-  $("choice-delete").addEventListener("click", () => commitVote("delete"));
-  $("choice-other").addEventListener("click", () => {
-    showNameStep();
-    $("name-input").value = "";
-    $("name-input").focus();
-  });
-}
-
-function startRating(grade) {
-  const boulder = currentBoulder();
-  if (!boulder) return;
-  pending = { boulderId: boulder.id, grade, name: "", key: "" };
-  $("name-intro").textContent = `Niveau ${grade} pour ${boulder.colorName} - ${zoneName(boulder.zone)}.`;
-  $("name-input").value = loadName();
-  showNameStep();
-  $("name-dialog").showModal();
-  $("name-input").select();
-}
-
-function showNameStep() {
-  $("name-form").hidden = false;
-  $("choice").hidden = true;
-  $("name-error").textContent = "";
-}
-
-function showChoiceStep(existing) {
-  $("name-form").hidden = true;
-  $("choice").hidden = false;
-  $("name-error").textContent = "";
-  $("choice-text").textContent = `« ${existing.name} » a déjà noté ce bloc : niveau ${existing.grade}.`;
-  $("choice-update").textContent =
-    existing.grade === pending.grade
-      ? `Garder le niveau ${pending.grade}`
-      : `Mettre à jour : ${existing.grade} → ${pending.grade}`;
-}
-
-function setBusy(busy) {
-  for (const element of $("name-dialog").querySelectorAll("button, input")) {
-    element.disabled = busy;
-  }
-}
-
-async function onNameSubmit(event) {
-  event.preventDefault();
-  if (!pending) return;
-  const name = cleanName($("name-input").value);
-  if (!name) {
-    $("name-error").textContent = `Entre un nom (${NAME_MAX} caractères maximum).`;
-    return;
-  }
-
-  setBusy(true);
-  $("name-error").textContent = "";
-  const ok = await fetchVotes(); // always check against fresh data
-  setBusy(false);
-  if (!pending) return; // dialog was closed meanwhile
-  syncUI();
-  if (!ok) {
-    $("name-error").textContent = ERROR_NETWORK;
-    return;
-  }
-
-  pending.name = name;
-  pending.key = nameKey(name);
-  const existing = state.votes[pending.boulderId]?.[pending.key];
-  if (existing && isValidGrade(existing.grade)) {
-    pending.name = existing.name || name; // keep the capitalization first used
-    showChoiceStep({ name: pending.name, grade: existing.grade });
-  } else {
-    await commitVote("save");
-  }
-}
-
-async function commitVote(action) {
-  if (!pending) return;
-  const { boulderId, grade, name, key } = pending;
-  setBusy(true);
-  $("name-error").textContent = "";
-  try {
-    if (action === "delete") {
-      await fb.updateDoc(fb.ref, new fb.FieldPath(boulderId, key), fb.deleteField());
-      if (state.votes[boulderId]) delete state.votes[boulderId][key];
-    } else {
-      await fb.setDoc(fb.ref, { [boulderId]: { [key]: { name, grade } } }, { merge: true });
-      state.votes[boulderId] = { ...(state.votes[boulderId] || {}), [key]: { name, grade } };
-    }
-    saveName(name);
-    setBusy(false);
-    $("name-dialog").close();
-    syncUI();
-    flashStatus(action === "delete" ? "Note supprimée." : "Note enregistrée.");
-  } catch (error) {
-    console.error(error);
-    setBusy(false);
-    $("name-error").textContent = ERROR_NETWORK;
-  }
 }
 
 /* ---------- Beta (videos) ---------- */

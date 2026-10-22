@@ -10,7 +10,7 @@
 <body>
   <header class="app-header">
     <h1>Blocs de la salle</h1>
-    <p class="subtitle">Choisis une zone, filtre par niveau, note les blocs et regarde la beta.</p>
+    <p class="subtitle">Choisis une zone, filtre par niveau, note tes réussites et regarde la beta.</p>
   </header>
 
   <main>
@@ -27,10 +27,14 @@
       <button id="reset-grade" class="reset" type="button" aria-label="Réinitialiser le niveau" title="Réinitialiser le niveau">&#8635;</button>
     </section>
 
-    <p id="notice" class="notice" hidden>Impossible de charger les notes pour le moment. Les niveaux affichés sont incomplets.</p>
+    <div id="notice" class="notice" hidden>
+      <span>Impossible de charger les données en ligne. Les informations affichées peuvent être incomplètes.</span>
+      <button id="retry" class="btn small" type="button">Réessayer</button>
+    </div>
 
     <section aria-labelledby="list-title">
       <h2 id="list-title">Blocs <span id="count" class="count"></span></h2>
+      <p id="loading" class="loading">Chargement…</p>
       <ul id="list" class="list"></ul>
       <p id="empty" class="empty" hidden>Aucun bloc ne correspond à ces filtres.</p>
     </section>
@@ -41,20 +45,60 @@
       <h2 id="detail-title"></h2>
       <button id="close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
-    <p id="detail-grade" class="detail-grade"></p>
+    <div id="detail-meta" class="detail-meta"></div>
 
     <div id="detail-photo" class="photo"></div>
 
-    <section class="panel" aria-labelledby="grades-title">
-      <h3 id="grades-title">Niveau</h3>
-      <p class="panel-help">Notes des grimpeurs. Touche une barre pour voir qui a voté.</p>
+    <section class="panel" aria-labelledby="done-title">
+      <h3 id="done-title">Réussites</h3>
+      <p id="done-count" class="done-count"></p>
+      <p id="done-names" class="done-names"></p>
+      <p id="my-record" class="my-record" hidden></p>
+
+      <button id="open-form" class="btn primary wide" type="button">J'ai réussi</button>
+
+      <form id="record-form" class="record-form" autocomplete="off" hidden>
+        <label class="field-label" for="name-input">Ton nom</label>
+        <input id="name-input" type="text" maxlength="20"
+               autocomplete="nickname" autocapitalize="words" autocorrect="off"
+               placeholder="Prénom ou pseudo">
+
+        <label id="vote-row" class="switch">
+          <input id="vote-toggle" type="checkbox">
+          <span>Donner mon avis sur le niveau</span>
+        </label>
+        <div id="stepper" class="stepper" hidden>
+          <button id="step-down" class="step-btn" type="button" aria-label="Un niveau plus facile">&minus;</button>
+          <output id="step-value" class="step-value" aria-live="polite"></output>
+          <button id="step-up" class="step-btn" type="button" aria-label="Un niveau plus dur">+</button>
+        </div>
+        <p id="step-hint" class="step-hint" hidden></p>
+
+        <div class="actions">
+          <button id="form-cancel" class="btn secondary" type="button">Annuler</button>
+          <button id="record-submit" class="btn primary" type="submit" disabled>Valider</button>
+        </div>
+      </form>
+
+      <div id="record-choice" class="record-choice" hidden>
+        <p id="choice-text" class="choice-text"></p>
+        <div class="actions column">
+          <button id="choice-update" class="btn primary" type="button"></button>
+          <button id="choice-delete" class="btn danger" type="button">Supprimer ma réussite</button>
+          <button id="choice-other" class="btn secondary" type="button">Choisir un autre nom</button>
+          <button id="choice-cancel" class="btn link" type="button">Annuler</button>
+        </div>
+      </div>
+
+      <p id="record-error" class="form-error" role="alert"></p>
+      <p id="record-status" class="rate-status" role="status"></p>
+    </section>
+
+    <section id="votes-panel" class="panel" aria-labelledby="votes-title">
+      <h3 id="votes-title">Avis sur le niveau</h3>
+      <p class="panel-help">Avis des grimpeurs qui ont réussi le bloc. Ils ne changent pas le niveau affiché. Touche une barre pour voir qui a voté.</p>
       <div id="chart" class="chart"></div>
       <p id="voters" class="voters"></p>
-
-      <h4 class="rate-title">Donne ton niveau</h4>
-      <div id="rate-grid" class="rate-grid"></div>
-      <p id="my-vote" class="my-vote" hidden></p>
-      <p id="rate-status" class="rate-status" role="status"></p>
     </section>
 
     <section class="panel" aria-labelledby="beta-title">
@@ -65,33 +109,6 @@
       <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
       <p class="beta-hint">S'ouvre dans WhatsApp : choisis le groupe de la salle, colle ton lien YouTube et envoie.</p>
     </section>
-  </dialog>
-
-  <dialog id="name-dialog" class="name-dialog" aria-labelledby="name-title">
-    <h2 id="name-title">Ton nom</h2>
-    <p id="name-intro" class="name-intro"></p>
-
-    <form id="name-form" autocomplete="off">
-      <input id="name-input" type="text" maxlength="20" required
-             autocomplete="nickname" autocapitalize="words" autocorrect="off"
-             placeholder="Prénom ou pseudo" aria-label="Ton nom">
-      <div class="actions">
-        <button id="name-cancel" class="btn secondary" type="button">Annuler</button>
-        <button class="btn primary" type="submit">Valider</button>
-      </div>
-    </form>
-
-    <div id="choice" hidden>
-      <p id="choice-text" class="choice-text"></p>
-      <div class="actions column">
-        <button id="choice-update" class="btn primary" type="button"></button>
-        <button id="choice-delete" class="btn danger" type="button">Supprimer ma note</button>
-        <button id="choice-other" class="btn secondary" type="button">Choisir un autre nom</button>
-        <button id="choice-cancel" class="btn link" type="button">Annuler</button>
-      </div>
-    </div>
-
-    <p id="name-error" class="name-error" role="alert"></p>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">
