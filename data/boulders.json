@@ -4,7 +4,7 @@
     "color": "#f3ff1c",
     "colorName": "Jaune fluo",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -12,7 +12,7 @@
     "color": "#ff800d",
     "colorName": "Orange",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -20,7 +20,7 @@
     "color": "#ff55aa",
     "colorName": "Rose (Gauche)",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -28,7 +28,7 @@
     "color": "#b823f8",
     "colorName": "Violet",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -36,7 +36,7 @@
     "color": "#4dea31",
     "colorName": "Vert fluo",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -44,7 +44,7 @@
     "color": "#224df9",
     "colorName": "Bleu",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -52,7 +52,7 @@
     "color": "#ff55aa",
     "colorName": "Rose (Droite)",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -60,7 +60,7 @@
     "color": "#e53935",
     "colorName": "Rouge",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -68,7 +68,7 @@
     "color": "#1b890e",
     "colorName": "Vert",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -76,7 +76,7 @@
     "color": "#224df9",
     "colorName": "Bleu",
     "zone": 1,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -84,7 +84,7 @@
     "color": "#1a1a1a",
     "colorName": "Noir",
     "zone": 2,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -92,7 +92,7 @@
     "color": "#ff55aa",
     "colorName": "Rose",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -101,7 +101,7 @@
     "color2": "#3fc512",
     "colorName": "Multicouleur",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -109,7 +109,7 @@
     "color": "#ff800d",
     "colorName": "Orange",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -117,7 +117,7 @@
     "color": "#f2f2f2",
     "colorName": "Blanc",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -125,7 +125,7 @@
     "color": "#b823f8",
     "colorName": "Violet",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -133,7 +133,7 @@
     "color": "#1a1a1a",
     "colorName": "Noir",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -141,7 +141,7 @@
     "color": "#f3ff1c",
     "colorName": "Jaune fluo",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -149,7 +149,7 @@
     "color": "#4dea31",
     "colorName": "Vert fluo",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -157,7 +157,7 @@
     "color": "#e53935",
     "colorName": "Rouge",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -165,7 +165,7 @@
     "color": "#224df9",
     "colorName": "Bleu",
     "zone": 4,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -173,7 +173,7 @@
     "color": "#ff800d",
     "colorName": "Orange",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -181,7 +181,7 @@
     "color": "#1a1a1a",
     "colorName": "Noir",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -189,7 +189,7 @@
     "color": "#f2f2f2",
     "colorName": "Blanc",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -197,7 +197,7 @@
     "color": "#224df9",
     "colorName": "Bleu",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -205,7 +205,7 @@
     "color": "#b823f8",
     "colorName": "Violet",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   },
   {
@@ -213,7 +213,7 @@
     "color": "#1b890e",
     "colorName": "Vert",
     "zone": 3,
-    "photo": "photos/",
+    "photo": "photos/2026-z1-01",
     "videos": []
   }
 ]
