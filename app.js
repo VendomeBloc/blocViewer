@@ -45,6 +45,8 @@ const state = {
   voting: false, // the +/- prompt is open
   busy: false, // a record is being written
   power: null, // names of the power users, null = unknown (not loaded)
+  likes: null, // { boulderId: { nameKey: { name } } }, null = not loaded
+  likeBusy: false, // a like is being written
 };
 
 let voteIndex = 0;
@@ -199,6 +201,7 @@ async function connectFirebase() {
     boulders: fsModule.doc(db, "boulders", "all"),
     records: fsModule.doc(db, "records", "all"),
     power: fsModule.doc(db, "config", "powerusers"),
+    likes: fsModule.doc(db, "likes", "all"),
     getDoc: fsModule.getDoc,
     setDoc: fsModule.setDoc,
     updateDoc: fsModule.updateDoc,
@@ -264,10 +267,11 @@ function applyRecordsSnapshot(snapshot) {
 // If the boulder document does not exist yet, it is created from data/boulders.json.
 async function fetchAllUnbounded() {
   await connectFirebase();
-  const [boulderSnap, recordsSnap, power] = await Promise.all([
+  const [boulderSnap, recordsSnap, power, likes] = await Promise.all([
     fb.getDoc(fb.boulders),
     fb.getDoc(fb.records),
     fetchPowerUsers(),
+    fetchLikesDoc(),
   ]);
   let list;
   if (boulderSnap.exists()) {
@@ -281,6 +285,7 @@ async function fetchAllUnbounded() {
   writeCache(list);
   applyRecordsSnapshot(recordsSnap);
   if (power) state.power = power;
+  if (likes) state.likes = likes;
   if (state.status === "failed") {
     state.status = "ok"; // a slow attempt finally succeeded
     syncUI();
@@ -305,6 +310,17 @@ async function fetchPowerUsers() {
   }
 }
 
+// Likes live in their own document; a failure here must not break the rest.
+async function fetchLikesDoc() {
+  try {
+    const snapshot = await fb.getDoc(fb.likes);
+    return snapshot.exists() ? snapshot.data() : {};
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
 async function fetchAll() {
   try {
     await withTimeout(fetchAllUnbounded(), REQUEST_TIMEOUT_MS);
@@ -315,17 +331,18 @@ async function fetchAll() {
   }
 }
 
-// Reads only the records (one document read).
+// Reads only the records and the likes (two document reads).
 async function fetchRecords() {
   try {
-    const snapshot = await withTimeout(
+    const [snapshot, likes] = await withTimeout(
       (async () => {
         await connectFirebase();
-        return fb.getDoc(fb.records);
+        return Promise.all([fb.getDoc(fb.records), fetchLikesDoc()]);
       })(),
       REQUEST_TIMEOUT_MS,
     );
     applyRecordsSnapshot(snapshot);
+    if (likes) state.likes = likes;
     return true;
   } catch (error) {
     console.error(error);
@@ -434,6 +451,74 @@ function completionText(count) {
   return count === 1 ? "1 validation" : `${count} validations`;
 }
 
+/* ---------- Likes (a heart per user and boulder) ---------- */
+
+const HEART_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+
+function likesInfo(boulderId) {
+  const entries = Object.values((state.likes || {})[boulderId] || {}).filter((e) => e && typeof e.name === "string");
+  return { count: entries.length };
+}
+
+function myLike(boulderId) {
+  if (!state.user || !state.likes) return false;
+  return !!((state.likes[boulderId] || {})[nameKey(state.user)]);
+}
+
+function renderLike(boulder) {
+  const liked = myLike(boulder.id);
+  const button = $("btn-like");
+  button.classList.toggle("on", liked);
+  button.setAttribute("aria-pressed", String(liked));
+  button.setAttribute("aria-label", liked ? "Je n'aime plus ce bloc" : "J'aime ce bloc");
+  button.disabled = state.likeBusy;
+}
+
+async function toggleLike() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  if (!state.user) {
+    openUserDialog("like"); // a like needs a name
+    return;
+  }
+  await setLike(!myLike(boulder.id));
+}
+
+async function setLike(liked) {
+  const boulder = currentBoulder();
+  if (!boulder || !state.user || state.likeBusy) return;
+  if (myLike(boulder.id) === liked) {
+    renderDetail();
+    return;
+  }
+  const id = boulder.id;
+  const name = state.user;
+  const key = nameKey(name);
+  state.likeBusy = true;
+  $("record-error").textContent = "";
+  renderDetail();
+  try {
+    await withRetry(() =>
+      (async () => {
+        await connectFirebase();
+        if (liked) await fb.setDoc(fb.likes, { [id]: { [key]: { name } } }, { merge: true });
+        else await fb.updateDoc(fb.likes, new fb.FieldPath(id, key), fb.deleteField());
+      })(),
+    );
+    const entries = { ...((state.likes || {})[id] || {}) };
+    if (liked) entries[key] = { name };
+    else delete entries[key];
+    state.likes = { ...(state.likes || {}), [id]: entries };
+  } catch (error) {
+    console.error(error);
+    $("record-error").textContent = errorText(error);
+  } finally {
+    state.likeBusy = false;
+    syncUI();
+  }
+}
+
 /* ---------- User: guest or signed in with a name (no password) ---------- */
 
 // If someone already used this name, reuse their capitalization.
@@ -516,6 +601,7 @@ async function onUserSubmit(event) {
   $("user-dialog").close();
   syncUI();
   if (then === "complete") await completeBoulder();
+  else if (then === "like") await setLike(true);
 }
 
 function signOut() {
@@ -579,14 +665,34 @@ function openUserDelete() {
   $("userdel-dialog").showModal();
 }
 
+// Everyone with a validation or a like, with their counts.
+function computeAllUsers() {
+  const rows = new Map();
+  const touch = (key, name) => {
+    if (!rows.has(key)) rows.set(key, { key, name, count: 0, likes: 0 });
+    return rows.get(key);
+  };
+  for (const entries of Object.values(state.records || {})) {
+    for (const [key, entry] of Object.entries(entries || {})) {
+      if (entry && typeof entry.name === "string") touch(key, entry.name).count += 1;
+    }
+  }
+  for (const entries of Object.values(state.likes || {})) {
+    for (const [key, entry] of Object.entries(entries || {})) {
+      if (entry && typeof entry.name === "string") touch(key, entry.name).likes += 1;
+    }
+  }
+  return [...rows.values()];
+}
+
 function renderUserDelete() {
-  const rows = computeRanking().sort((a, b) => byName(a.name, b.name));
+  const rows = computeAllUsers().sort((a, b) => byName(a.name, b.name));
   $("userdel-empty").hidden = rows.length > 0;
   const items = rows.flatMap((row) => {
     const li = document.createElement("li");
     const label = document.createElement("span");
     label.className = "power-name";
-    label.textContent = `${row.name} (${row.count})`;
+    label.textContent = `${row.name} (✓ ${row.count} · ♥ ${row.likes})`;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "btn small danger";
@@ -605,7 +711,7 @@ function renderUserDelete() {
     confirm.className = "userdel-confirm";
     const message = document.createElement("p");
     message.className = "delete-warning";
-    message.textContent = `Effacer ${row.name} et toutes ses validations et avis ?`;
+    message.textContent = `Effacer ${row.name} et toutes ses validations, avis et j'aime ?`;
     const actions = document.createElement("div");
     actions.className = "actions";
     const no = document.createElement("button");
@@ -645,12 +751,25 @@ async function deleteUserRecords(key) {
           if (entries && entries[key]) args.push(new fb.FieldPath(boulderId, key), fb.deleteField());
         }
         if (args.length) await fb.updateDoc(fb.records, ...args);
-        // Mirror the fresh copy locally.
-        const local = {};
-        for (const [boulderId, entries] of Object.entries(data)) {
-          const { [key]: removed, ...rest } = entries || {};
-          local[boulderId] = rest;
+        // Same for the likes.
+        const likesSnap = await fb.getDoc(fb.likes);
+        const likesData = likesSnap.exists() ? likesSnap.data() : {};
+        const likeArgs = [];
+        for (const [boulderId, entries] of Object.entries(likesData)) {
+          if (entries && entries[key]) likeArgs.push(new fb.FieldPath(boulderId, key), fb.deleteField());
         }
+        if (likeArgs.length) await fb.updateDoc(fb.likes, ...likeArgs);
+        // Mirror the fresh copies locally.
+        const strip = (source) => {
+          const result = {};
+          for (const [boulderId, entries] of Object.entries(source)) {
+            const { [key]: removed, ...rest } = entries || {};
+            result[boulderId] = rest;
+          }
+          return result;
+        };
+        state.likes = strip(likesData);
+        const local = strip(data);
         state.records = local;
         state.lastFetch = Date.now();
       })(),
@@ -894,6 +1013,14 @@ function renderItem(boulder) {
     mark.setAttribute("aria-label", "Validé");
     swatch.appendChild(mark);
   }
+  if (myLike(boulder.id)) {
+    const mark = document.createElement("span");
+    mark.className = "like-mark";
+    mark.innerHTML = HEART_SVG;
+    mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "J'aime");
+    swatch.appendChild(mark);
+  }
 
   const main = document.createElement("span");
   main.className = "item-main";
@@ -902,7 +1029,25 @@ function renderItem(boulder) {
   title.textContent = boulder.colorName;
   const sub = document.createElement("div");
   sub.className = "item-sub";
-  sub.textContent = info ? completionText(info.done) : "";
+  if (info) {
+    const done = document.createElement("span");
+    done.className = "count-done";
+    done.textContent = `✓ ${info.done}`;
+    done.setAttribute("aria-label", completionText(info.done));
+    const separator = document.createElement("span");
+    separator.className = "count-sep";
+    separator.textContent = "|";
+    separator.setAttribute("aria-hidden", "true");
+    const likes = document.createElement("span");
+    likes.className = "count-like";
+    const heart = document.createElement("span");
+    heart.className = "mini-heart";
+    heart.innerHTML = HEART_SVG;
+    heart.setAttribute("aria-hidden", "true");
+    likes.append(heart, ` ${likesInfo(boulder.id).count}`);
+    likes.setAttribute("aria-label", `${likesInfo(boulder.id).count} j'aime`);
+    sub.append(done, separator, likes);
+  }
   main.append(title, sub);
 
   button.append(zone, swatch, main, gradeChip(boulder.grade));
@@ -984,6 +1129,7 @@ function fillDetailStatic(boulder) {
 function renderDetail() {
   const boulder = currentBoulder();
   if (!boulder) return;
+  renderLike(boulder);
   renderMeta(boulder);
   renderDone(boulder);
   renderVotes(boulder);
@@ -1284,6 +1430,8 @@ function bindUI() {
   $("done-dialog").addEventListener("click", (event) => {
     if (event.target === $("done-dialog")) $("done-dialog").close(); // tap outside
   });
+  $("btn-like").innerHTML = HEART_SVG;
+  $("btn-like").addEventListener("click", toggleLike);
   $("btn-complete").addEventListener("click", completeBoulder);
   $("btn-grade").addEventListener("click", openVotePrompt);
   $("btn-cancel").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "cancel"));
@@ -1735,6 +1883,7 @@ async function deleteBoulder() {
         (async () => {
           await connectFirebase();
           await fb.updateDoc(fb.records, new fb.FieldPath(id), fb.deleteField());
+          await fb.updateDoc(fb.likes, new fb.FieldPath(id), fb.deleteField()).catch(() => {});
         })(),
         REQUEST_TIMEOUT_MS,
       );
@@ -1744,6 +1893,10 @@ async function deleteBoulder() {
     if (state.records && state.records[id]) {
       const { [id]: removed, ...rest } = state.records;
       state.records = rest;
+    }
+    if (state.likes && state.likes[id]) {
+      const { [id]: removed, ...rest } = state.likes;
+      state.likes = rest;
     }
     $("boulder-dialog").close();
     closeDetail();

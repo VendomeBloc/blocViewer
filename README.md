@@ -63,14 +63,16 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 - The level filter is a single - / + selector ("Tous", 2, 3, 4, 5, 6, 7) that shows the boulders of that group of grades (6 = 6a to 6c+); the chip keeps the grade color. The round arrow resets it.
 - The detail view has a "Validé : (n)" title whose oval opens a pop-up with the climbers and their opinions, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
+- A heart at the start of the boulder title toggles a like for the signed-in user (a guest is asked for a name first). Likes are independent from validations. The list shows the totals ("✓ 5 | ♥ 2") and, on the color swatch, a green check circle (validated by you) and a red heart circle (liked by you).
 - Zooming (pinch and double-tap) is disabled.
 
 ## Database (Firestore)
 
-Three documents, so a page load costs three reads:
+Four documents, so a page load costs four reads:
 
 - `boulders/all`: `{ "list": [ ...boulders ] }`
 - `records/all`: `{ "z1-01": { "u_max": { "name": "Max", "vote": "4b" }, ... }, ... }` (`vote` is optional)
+- `likes/all`: `{ "z1-01": { "u_max": { "name": "Max" }, ... }, ... }`
 - `config/powerusers`: `{ "list": ["admin", "Léa"] }`
 
 Security rules (Firestore > Rules). No sign-in: anyone using the site can write, but nobody can delete a whole document from the site.
@@ -85,6 +87,11 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /records/all {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+    match /likes/all {
       allow read: if true;
       allow create, update: if true;
       allow delete: if false;
