@@ -100,6 +100,15 @@ service cloud.firestore {
 
 The old `grades/all` document (previous 1-10 votes) is no longer used and can be deleted in the console.
 
+## Connection problems
+
+Phones often cut the connection to the database while the page is in the background. The site therefore:
+
+- detects the best connection type automatically (some networks block the default one);
+- when the page comes back after a few seconds, re-reads the records, and after 30 seconds or more also cuts and re-opens the connection first (same when the phone comes back online);
+- retries a failed write once after resetting the connection (except adding a boulder, which is never repeated so it cannot be added twice);
+- shows the technical error code in brackets after the error message, e.g. `(unavailable)`, to help diagnose a real failure.
+
 ## Adding a submitted video
 
 Climbers tap "Proposer une vidéo" on a boulder, which opens WhatsApp with a prefilled message naming the boulder (including its `id`). They choose the group and paste their YouTube link. To publish it, add the link to that boulder's `videos` list in `data/boulders.json` (then reset `boulders/all` as described above).

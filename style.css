@@ -614,3 +614,6 @@ dialog.player[open] { display: flex; flex-direction: column; }
 
 /* "Validé par" pop-up: narrower than the boulder view */
 dialog#done-dialog { width: min(78vw, 340px); max-height: 70vh; }
+
+/* No focus ring on the dialogs themselves (focus returns to them when another one closes). */
+dialog, dialog:focus, dialog:focus-visible { outline: none; }

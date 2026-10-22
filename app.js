@@ -184,8 +184,18 @@ async function connectFirebase() {
     import(`${FIREBASE_URL}/firebase-app.js`),
     import(`${FIREBASE_URL}/firebase-firestore.js`),
   ]);
-  const db = fsModule.getFirestore(appModule.initializeApp(firebaseConfig));
+  const app = appModule.initializeApp(firebaseConfig);
+  let db;
+  try {
+    // Some networks block Firestore's streaming connection: detect it and fall back.
+    db = fsModule.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  } catch {
+    db = fsModule.getFirestore(app);
+  }
   fb = {
+    db,
+    enableNetwork: fsModule.enableNetwork,
+    disableNetwork: fsModule.disableNetwork,
     boulders: fsModule.doc(db, "boulders", "all"),
     records: fsModule.doc(db, "records", "all"),
     power: fsModule.doc(db, "config", "powerusers"),
@@ -195,6 +205,41 @@ async function connectFirebase() {
     deleteField: fsModule.deleteField,
     FieldPath: fsModule.FieldPath,
   };
+}
+
+// Cuts and re-opens the Firestore connection (a phone may have silently killed it).
+async function resetConnection() {
+  if (!fb) return;
+  try {
+    await withTimeout(
+      (async () => {
+        await fb.disableNetwork(fb.db);
+        await fb.enableNetwork(fb.db);
+      })(),
+      4000,
+    );
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// For writes that are safe to repeat: if the first attempt fails or is too slow,
+// the connection is reset and the write is tried once more before giving up.
+async function withRetry(makeTask) {
+  try {
+    return await withTimeout(makeTask(), REQUEST_TIMEOUT_MS);
+  } catch (first) {
+    console.error(first);
+    await resetConnection();
+    await sleep(500);
+    return withTimeout(makeTask(), REQUEST_TIMEOUT_MS);
+  }
+}
+
+// The error message, with the technical code in brackets (useful to diagnose problems).
+function errorText(error) {
+  const code = error && String(error.code || error.message || "").replace(/^firestore\//, "");
+  return code ? `${ERROR_NETWORK} (${code})` : ERROR_NETWORK;
 }
 
 function withTimeout(promise, ms) {
@@ -590,7 +635,7 @@ async function deleteUserRecords(key) {
   userDelBusy = true;
   renderUserDelete();
   try {
-    await withTimeout(
+    await withRetry(() =>
       (async () => {
         await connectFirebase();
         const snapshot = await fb.getDoc(fb.records);
@@ -609,14 +654,13 @@ async function deleteUserRecords(key) {
         state.records = local;
         state.lastFetch = Date.now();
       })(),
-      REQUEST_TIMEOUT_MS,
     );
     userDelConfirmKey = null;
     flashStatus("Utilisateur supprimé.", "admin-status");
   } catch (error) {
     console.error(error);
     userDelConfirmKey = null;
-    $("userdel-error").textContent = ERROR_NETWORK;
+    $("userdel-error").textContent = errorText(error);
   } finally {
     userDelBusy = false;
     syncUI();
@@ -631,6 +675,41 @@ function openRanking() {
     if ($("rank-dialog").open) renderRanking();
   });
 }
+
+/* ---------- Coming back to the page: reconnect before the user acts ---------- */
+
+const RESUME_MIN_AWAY_MS = 3000; // shorter absences are ignored
+const RESUME_RESET_AFTER_MS = 30000; // after this long, the connection is reset first
+let hiddenAt = 0;
+let resuming = false;
+
+async function onResume(forceReset = false) {
+  if (resuming || loadingNow) return;
+  const away = hiddenAt ? Date.now() - hiddenAt : 0;
+  hiddenAt = 0;
+  if (!forceReset && away < RESUME_MIN_AWAY_MS) return;
+  resuming = true;
+  try {
+    if (state.status === "failed") {
+      if (fb) await loadData(); // otherwise the "Réessayer" button reloads the page
+      return;
+    }
+    if (fb && !state.busy && !inflight && (forceReset || away > RESUME_RESET_AFTER_MS)) await resetConnection();
+    state.lastFetch = 0; // a small read re-opens the connection and refreshes the records
+    await refreshRecords();
+  } finally {
+    resuming = false;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else onResume();
+});
+window.addEventListener("online", () => onResume(true));
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) onResume(true);
+});
 
 /* ---------- Init ---------- */
 
@@ -1057,7 +1136,7 @@ async function writeRecord(boulderId, action, vote = null) {
   renderDetail();
   try {
     if (!state.records && !(await fetchRecords())) throw new Error("records unavailable");
-    await withTimeout(
+    await withRetry(() =>
       (async () => {
         await connectFirebase();
         const entryPath = (...rest) => new fb.FieldPath(boulderId, key, ...rest);
@@ -1071,7 +1150,6 @@ async function writeRecord(boulderId, action, vote = null) {
           await fb.updateDoc(fb.records, entryPath(), fb.deleteField());
         }
       })(),
-      REQUEST_TIMEOUT_MS,
     );
 
     const entries = { ...(state.records[boulderId] || {}) };
@@ -1090,7 +1168,7 @@ async function writeRecord(boulderId, action, vote = null) {
     if (action !== "complete") state.voting = false;
   } catch (error) {
     console.error(error);
-    $("record-error").textContent = ERROR_NETWORK;
+    $("record-error").textContent = errorText(error);
   } finally {
     state.busy = false;
     syncUI();
@@ -1303,8 +1381,11 @@ function renderAdmin() {
 }
 
 // Read-modify-write on the freshest copy of a document, so two editors rarely clash.
-async function mutateBoulders(change) {
-  return withTimeout(
+// With { retry: false } (adding a boulder) a failed attempt is never repeated, because the
+// first one may still arrive and the boulder would be added twice.
+async function mutateBoulders(change, { retry = true } = {}) {
+  const run = retry ? withRetry : (makeTask) => withTimeout(makeTask(), REQUEST_TIMEOUT_MS);
+  return run(() =>
     (async () => {
       await connectFirebase();
       const snapshot = await fb.getDoc(fb.boulders);
@@ -1314,12 +1395,11 @@ async function mutateBoulders(change) {
       await fb.setDoc(fb.boulders, { list: result.list });
       return result;
     })(),
-    REQUEST_TIMEOUT_MS,
   );
 }
 
 async function mutatePower(change) {
-  return withTimeout(
+  return withRetry(() =>
     (async () => {
       await connectFirebase();
       const snapshot = await fb.getDoc(fb.power);
@@ -1330,7 +1410,6 @@ async function mutatePower(change) {
       await fb.setDoc(fb.power, { list });
       return list;
     })(),
-    REQUEST_TIMEOUT_MS,
   );
 }
 
@@ -1388,7 +1467,7 @@ async function changePowerList(change) {
     $("power-input").value = "";
   } catch (error) {
     console.error(error);
-    $("power-error").textContent = ERROR_NETWORK;
+    $("power-error").textContent = errorText(error);
   } finally {
     powerBusy = false;
     renderPowerList();
@@ -1623,7 +1702,7 @@ async function saveBoulder(event) {
       saved = { ...existing, ...fields };
       if (!fields.color2) delete saved.color2;
       return { list: list.map((b) => (b.id === formState.id ? saved : b)) };
-    });
+    }, { retry: formState.mode !== "add" });
     state.boulders = result.list;
     writeCache(result.list);
     $("boulder-dialog").close();
@@ -1636,7 +1715,7 @@ async function saveBoulder(event) {
     }
   } catch (caught) {
     console.error(caught);
-    errorBox.textContent = caught.message === "missing" ? "Ce bloc n'existe plus." : ERROR_NETWORK;
+    errorBox.textContent = caught.message === "missing" ? "Ce bloc n'existe plus." : errorText(caught);
   } finally {
     setFormBusy(false);
   }
@@ -1672,7 +1751,7 @@ async function deleteBoulder() {
     flashStatus("Bloc supprimé.", "admin-status");
   } catch (error) {
     console.error(error);
-    $("boulder-error").textContent = ERROR_NETWORK;
+    $("boulder-error").textContent = errorText(error);
     $("delete-confirm").hidden = true;
     $("boulder-delete").hidden = false;
   } finally {
@@ -1694,6 +1773,10 @@ function bindManagement() {
   $("power-input").addEventListener("input", updatePowerForm);
   $("power-form").addEventListener("submit", addPowerUser);
 
+  $("boulder-dialog").addEventListener("close", () => {
+    // Back on the boulder view: focus its title (no visible focus ring), not the button.
+    if ($("detail").open) $("detail-title").focus({ preventScroll: true });
+  });
   $("boulder-close").addEventListener("click", () => $("boulder-dialog").close());
   $("boulder-cancel").addEventListener("click", () => $("boulder-dialog").close());
   $("boulder-form").addEventListener("submit", saveBoulder);
