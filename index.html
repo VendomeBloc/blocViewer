@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#1f2937">
   <title>Blocs de la salle</title>
   <link rel="stylesheet" href="style.css">
@@ -10,7 +10,25 @@
 <body>
   <header class="app-header">
     <h1>Blocs de la salle</h1>
-    <p class="subtitle">Choisis une zone, filtre par niveau, note tes réussites et regarde la beta.</p>
+    <div class="user-bar">
+      <button id="user-btn" class="user-btn" type="button" aria-label="Changer d'utilisateur">
+        <span id="user-avatar" class="avatar" aria-hidden="true">?</span>
+        <span class="user-text">
+          <span id="user-name" class="user-name">Invité</span>
+          <small id="user-hint" class="user-hint">Se connecter</small>
+        </span>
+      </button>
+      <div id="user-stats" class="user-stats" hidden>
+        <div class="stat">
+          <strong id="stat-count">0/0</strong>
+          <small>réussis</small>
+        </div>
+        <div class="stat">
+          <span id="stat-hardest" class="stat-value">–</span>
+          <small>plus dur</small>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -42,7 +60,7 @@
 
   <dialog id="detail" aria-labelledby="detail-title">
     <div class="detail-head">
-      <h2 id="detail-title"></h2>
+      <h2 id="detail-title" tabindex="-1" autofocus></h2>
       <button id="close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
     <div id="detail-meta" class="detail-meta"></div>
@@ -55,39 +73,26 @@
       <p id="done-names" class="done-names"></p>
       <p id="my-record" class="my-record" hidden></p>
 
-      <button id="open-form" class="btn primary wide" type="button">J'ai réussi</button>
+      <button id="btn-complete" class="btn primary wide" type="button">J'ai réussi</button>
 
-      <form id="record-form" class="record-form" autocomplete="off" hidden>
-        <label class="field-label" for="name-input">Ton nom</label>
-        <input id="name-input" type="text" maxlength="20"
-               autocomplete="nickname" autocapitalize="words" autocorrect="off"
-               placeholder="Prénom ou pseudo">
+      <div id="completed-actions" class="actions" hidden>
+        <button id="btn-grade" class="btn primary" type="button">Donner mon avis</button>
+        <button id="btn-cancel" class="btn danger" type="button">Annuler ma réussite</button>
+      </div>
 
-        <label id="vote-row" class="switch">
-          <input id="vote-toggle" type="checkbox">
-          <span>Donner mon avis sur le niveau</span>
-        </label>
-        <div id="stepper" class="stepper" hidden>
+      <div id="vote-prompt" class="vote-prompt" hidden>
+        <p class="vote-title">Ton avis sur le niveau</p>
+        <div class="stepper">
           <button id="step-down" class="step-btn" type="button" aria-label="Un niveau plus facile">&minus;</button>
           <output id="step-value" class="step-value" aria-live="polite"></output>
           <button id="step-up" class="step-btn" type="button" aria-label="Un niveau plus dur">+</button>
         </div>
-        <p id="step-hint" class="step-hint" hidden></p>
-
+        <p id="step-hint" class="step-hint"></p>
         <div class="actions">
-          <button id="form-cancel" class="btn secondary" type="button">Annuler</button>
-          <button id="record-submit" class="btn primary" type="submit" disabled>Valider</button>
+          <button id="vote-close" class="btn secondary" type="button">Fermer</button>
+          <button id="vote-submit" class="btn primary" type="button">Valider</button>
         </div>
-      </form>
-
-      <div id="record-choice" class="record-choice" hidden>
-        <p id="choice-text" class="choice-text"></p>
-        <div class="actions column">
-          <button id="choice-update" class="btn primary" type="button"></button>
-          <button id="choice-delete" class="btn danger" type="button">Supprimer ma réussite</button>
-          <button id="choice-other" class="btn secondary" type="button">Choisir un autre nom</button>
-          <button id="choice-cancel" class="btn link" type="button">Annuler</button>
-        </div>
+        <button id="vote-remove" class="btn link wide" type="button" hidden>Retirer mon avis</button>
       </div>
 
       <p id="record-error" class="form-error" role="alert"></p>
@@ -109,6 +114,21 @@
       <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
       <p class="beta-hint">S'ouvre dans WhatsApp : choisis le groupe de la salle, colle ton lien YouTube et envoie.</p>
     </section>
+  </dialog>
+
+  <dialog id="user-dialog" class="small-dialog" aria-labelledby="user-title">
+    <h2 id="user-title">Qui es-tu ?</h2>
+    <p id="user-intro" class="user-intro"></p>
+    <form id="user-form" autocomplete="off">
+      <input id="user-input" type="text" maxlength="20"
+             autocomplete="nickname" autocapitalize="words" autocorrect="off"
+             placeholder="Prénom ou pseudo" aria-label="Ton nom">
+      <div class="actions">
+        <button id="user-cancel" class="btn secondary" type="button">Annuler</button>
+        <button id="user-submit" class="btn primary" type="submit" disabled>Valider</button>
+      </div>
+    </form>
+    <button id="user-signout" class="btn link wide" type="button" hidden>Se déconnecter (mode invité)</button>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">

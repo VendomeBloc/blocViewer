@@ -27,12 +27,17 @@ const state = {
   min: 0, // index in GRADES
   max: LAST_GRADE,
   records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
-  recordsExists: false,
   lastFetch: 0,
   status: "loading", // "loading" | "ok" | "failed"
+  user: "", // signed-in name, "" = guest
+  signInThen: null, // action to run once the user has signed in
   currentId: null, // boulder shown in the detail view
   selectedBar: null, // grade index selected in the chart
+  voting: false, // the +/- prompt is open
+  busy: false, // a record is being written
 };
+
+let voteIndex = 0;
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,6 +47,19 @@ async function loadJson(path) {
   if (!response.ok) throw new Error(`Failed to load ${path}`);
   return response.json();
 }
+
+/* ---------- No zoom (pinch and double-tap) ---------- */
+
+// The viewport tag and CSS handle most browsers; iOS Safari needs these as well.
+document.addEventListener("gesturestart", (event) => event.preventDefault());
+document.addEventListener("gesturechange", (event) => event.preventDefault());
+document.addEventListener(
+  "touchmove",
+  (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  },
+  { passive: false },
+);
 
 /* ---------- Grades and their colors ---------- */
 
@@ -112,6 +130,14 @@ function saveName(name) {
   }
 }
 
+function clearName() {
+  try {
+    localStorage.removeItem(NAME_STORAGE_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
 function isValidBoulder(boulder) {
   return (
     boulder &&
@@ -174,7 +200,6 @@ async function loadStaticBoulders() {
 }
 
 function applyRecordsSnapshot(snapshot) {
-  state.recordsExists = snapshot.exists();
   state.records = snapshot.exists() ? snapshot.data() : {};
   state.lastFetch = Date.now();
 }
@@ -211,7 +236,7 @@ async function fetchAll() {
   }
 }
 
-// Reads only the records (one document read). Used for fresh checks before writing.
+// Reads only the records (one document read).
 async function fetchRecords() {
   try {
     const snapshot = await withTimeout(
@@ -279,11 +304,12 @@ function refreshRecords() {
 
 function syncUI() {
   $("notice").hidden = state.status !== "failed";
+  renderUserBar();
   render();
   if (state.currentId) renderDetail();
 }
 
-/* ---------- Records (completions and optional votes) ---------- */
+/* ---------- Names and records (completions and optional votes) ---------- */
 
 function nameKey(name) {
   return `u_${name.normalize("NFC").toLocaleLowerCase("fr")}`;
@@ -316,15 +342,90 @@ function recordsInfo(boulderId) {
   return { done: entries.length, names: entries.map((e) => e.name).sort(byName), voteCounts, voters, votes };
 }
 
+// The record of the signed-in user on a boulder, or null (guests have none).
 function myEntry(boulderId) {
-  const name = loadName();
-  if (!name || !state.records) return null;
-  return (state.records[boulderId] || {})[nameKey(name)] || null;
+  if (!state.user || !state.records) return null;
+  return (state.records[boulderId] || {})[nameKey(state.user)] || null;
 }
 
 function completionText(count) {
   if (count === 0) return "aucune réussite";
   return count === 1 ? "1 réussite" : `${count} réussites`;
+}
+
+/* ---------- User: guest or signed in with a name (no password) ---------- */
+
+// If someone already used this name, reuse their capitalization.
+function canonicalName(name) {
+  const key = nameKey(name);
+  for (const entries of Object.values(state.records || {})) {
+    const entry = entries && entries[key];
+    if (entry && typeof entry.name === "string") return entry.name;
+  }
+  return name;
+}
+
+function renderUserBar() {
+  const signedIn = state.user !== "";
+  $("user-avatar").textContent = signedIn ? state.user.charAt(0).toUpperCase() : "?";
+  $("user-name").textContent = signedIn ? state.user : "Invité";
+  $("user-hint").textContent = signedIn ? "" : "Se connecter";
+  $("user-hint").hidden = signedIn;
+  $("user-stats").hidden = !signedIn;
+  if (!signedIn) return;
+
+  const boulders = state.boulders || [];
+  let done = 0;
+  let hardest = -1;
+  if (state.records) {
+    for (const boulder of boulders) {
+      if (!myEntry(boulder.id)) continue;
+      done += 1;
+      hardest = Math.max(hardest, gradeIndex(boulder.grade));
+    }
+  }
+  const total = state.boulders ? String(boulders.length) : "–";
+  $("stat-count").textContent = `${state.records ? done : "–"}/${total}`;
+  $("stat-hardest").replaceChildren(hardest >= 0 ? gradeChip(GRADES[hardest], "header") : "–");
+}
+
+function openUserDialog(then = null) {
+  state.signInThen = then;
+  $("user-title").textContent = state.user ? "Changer de nom" : "Qui es-tu ?";
+  $("user-intro").textContent =
+    then === "complete"
+      ? "Entre ton nom pour enregistrer ta réussite."
+      : "Entre ton nom pour suivre tes réussites. Pas de mot de passe : le même nom retrouve les mêmes réussites.";
+  $("user-input").value = state.user;
+  $("user-signout").hidden = !state.user;
+  updateUserForm();
+  $("user-dialog").showModal();
+  $("user-input").select();
+}
+
+function updateUserForm() {
+  $("user-submit").disabled = !cleanName($("user-input").value);
+}
+
+async function onUserSubmit(event) {
+  event.preventDefault();
+  const name = cleanName($("user-input").value);
+  if (!name) return;
+  const then = state.signInThen;
+  state.user = canonicalName(name);
+  saveName(state.user);
+  state.voting = false;
+  $("user-dialog").close();
+  syncUI();
+  if (then === "complete") await completeBoulder();
+}
+
+function signOut() {
+  state.user = "";
+  state.voting = false;
+  clearName();
+  $("user-dialog").close();
+  syncUI();
 }
 
 /* ---------- Init ---------- */
@@ -334,6 +435,7 @@ async function init() {
     const zoneData = await loadJson("data/zones.json");
     state.zones = zoneData.zones;
     state.boulders = readCache();
+    state.user = cleanName(loadName());
     buildMap(zoneData);
     buildGradeControls();
     bindUI();
@@ -535,11 +637,12 @@ function onDetailClosed() {
   if ($("detail").open) return;
   const closedId = state.currentId;
   if ($("player").open) $("player").close();
-  closeForm();
   $("beta-videos").replaceChildren();
   $("record-status").textContent = "";
+  $("record-error").textContent = "";
   state.currentId = null;
   state.selectedBar = null;
+  state.voting = false;
   if (location.hash && decodeURIComponent(location.hash.slice(1)) === closedId) {
     history.replaceState(null, "", location.pathname + location.search);
   }
@@ -566,8 +669,9 @@ function syncDetailWithHash() {
   state.currentId = boulder.id;
   if (fresh) {
     state.selectedBar = null;
-    closeForm();
+    state.voting = false;
     $("record-status").textContent = "";
+    $("record-error").textContent = "";
     $("detail-title").textContent = `${boulder.colorName} - ${zoneName(boulder.zone)}`;
     $("detail-photo").replaceChildren(buildPhoto(boulder));
     fillBeta(boulder, zoneName(boulder.zone));
@@ -583,7 +687,6 @@ function renderDetail() {
   renderMeta(boulder);
   renderDone(boulder);
   renderVotes(boulder);
-  if (!$("record-form").hidden) updateFormState();
 }
 
 function renderMeta(boulder) {
@@ -615,7 +718,7 @@ function buildPhoto(boulder) {
   return img;
 }
 
-/* ---------- Completions ---------- */
+/* ---------- Completions: one tap to complete, then grade or cancel ---------- */
 
 function renderDone(boulder) {
   const info = recordsInfo(boulder.id);
@@ -633,13 +736,147 @@ function renderDone(boulder) {
   }
 
   const mine = myEntry(boulder.id);
+  const base = gradeIndex(boulder.grade);
+  const hasVote = mine && gradeIndex(mine.vote) >= 0;
+
   const myRecord = $("my-record");
   if (mine) {
-    myRecord.textContent = `Tu as réussi ce bloc (${mine.name})${gradeIndex(mine.vote) >= 0 ? ` · ton avis : ${mine.vote}` : ""}`;
+    myRecord.textContent = `Tu as réussi ce bloc (${state.user})${hasVote ? ` · ton avis : ${mine.vote}` : ""}`;
     myRecord.hidden = false;
   } else {
     myRecord.hidden = true;
   }
+
+  if (!mine) state.voting = false;
+  $("btn-complete").hidden = !!mine;
+  $("btn-complete").disabled = state.busy;
+  $("completed-actions").hidden = !mine || state.voting;
+  $("btn-grade").hidden = base < 0;
+  $("btn-grade").textContent = hasVote ? "Modifier mon avis" : "Donner mon avis";
+  $("btn-grade").disabled = state.busy;
+  $("btn-cancel").disabled = state.busy;
+  renderVotePrompt(boulder, mine);
+}
+
+function renderVotePrompt(boulder, mine) {
+  const base = gradeIndex(boulder.grade);
+  const show = state.voting && mine && base >= 0;
+  $("vote-prompt").hidden = !show;
+  if (!show) return;
+
+  const [low, high] = voteWindow(base);
+  voteIndex = Math.min(high, Math.max(low, voteIndex));
+  $("step-value").replaceChildren(gradeChip(GRADES[voteIndex], "big"));
+  $("step-down").disabled = state.busy || voteIndex <= low;
+  $("step-up").disabled = state.busy || voteIndex >= high;
+  $("step-hint").textContent =
+    voteIndex === base
+      ? `Même niveau que le bloc (${boulder.grade})`
+      : voteIndex < base
+        ? `Plus facile que le bloc (${boulder.grade})`
+        : `Plus dur que le bloc (${boulder.grade})`;
+  $("vote-submit").disabled = state.busy;
+  $("vote-close").disabled = state.busy;
+  $("vote-remove").hidden = gradeIndex(mine.vote) < 0;
+  $("vote-remove").disabled = state.busy;
+}
+
+async function completeBoulder() {
+  const boulder = currentBoulder();
+  if (!boulder) return;
+  if (!state.user) {
+    openUserDialog("complete"); // a record needs a name
+    return;
+  }
+  if (myEntry(boulder.id)) {
+    renderDetail(); // already completed under this name
+    return;
+  }
+  await writeRecord(boulder.id, "complete");
+}
+
+function openVotePrompt() {
+  const boulder = currentBoulder();
+  const mine = boulder && myEntry(boulder.id);
+  if (!mine) return;
+  const existing = gradeIndex(mine.vote);
+  voteIndex = existing >= 0 ? existing : Math.max(0, gradeIndex(boulder.grade));
+  state.voting = true;
+  renderDetail();
+}
+
+function stepVote(delta) {
+  voteIndex += delta;
+  renderDetail();
+}
+
+const SUCCESS_MESSAGES = {
+  complete: "Réussite enregistrée.",
+  vote: "Avis enregistré.",
+  unvote: "Avis retiré.",
+  cancel: "Réussite annulée.",
+};
+
+// action: "complete" | "vote" | "unvote" | "cancel". No confirmation is asked.
+async function writeRecord(boulderId, action, vote = null) {
+  if (state.busy || !state.user) return;
+  const name = state.user;
+  const key = nameKey(name);
+  state.busy = true;
+  $("record-error").textContent = "";
+  $("record-status").textContent = "";
+  renderDetail();
+  try {
+    if (!state.records && !(await fetchRecords())) throw new Error("records unavailable");
+    await withTimeout(
+      (async () => {
+        await connectFirebase();
+        const entryPath = (...rest) => new fb.FieldPath(boulderId, key, ...rest);
+        if (action === "complete") {
+          await fb.setDoc(fb.records, { [boulderId]: { [key]: { name } } }, { merge: true });
+        } else if (action === "vote") {
+          await fb.setDoc(fb.records, { [boulderId]: { [key]: { name, vote } } }, { merge: true });
+        } else if (action === "unvote") {
+          await fb.updateDoc(fb.records, entryPath("vote"), fb.deleteField());
+        } else if (action === "cancel") {
+          await fb.updateDoc(fb.records, entryPath(), fb.deleteField());
+        }
+      })(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+    const entries = { ...(state.records[boulderId] || {}) };
+    if (action === "complete") {
+      entries[key] = { ...(entries[key] || {}), name };
+    } else if (action === "vote") {
+      entries[key] = { name, vote };
+    } else if (action === "unvote") {
+      const entry = { ...(entries[key] || { name }) };
+      delete entry.vote;
+      entries[key] = entry;
+    } else if (action === "cancel") {
+      delete entries[key];
+    }
+    state.records = { ...state.records, [boulderId]: entries };
+    if (action !== "complete") state.voting = false;
+    flashStatus(SUCCESS_MESSAGES[action]);
+  } catch (error) {
+    console.error(error);
+    $("record-error").textContent = ERROR_NETWORK;
+  } finally {
+    state.busy = false;
+    syncUI();
+  }
+}
+
+let statusTimer = null;
+
+function flashStatus(message) {
+  $("record-status").textContent = message;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => {
+    $("record-status").textContent = "";
+  }, 3000);
 }
 
 /* ---------- Votes chart (window of +/-3 grades around the set grade) ---------- */
@@ -705,10 +942,7 @@ function renderVotes(boulder) {
   }
 }
 
-/* ---------- Record form: name, optional vote, then save / update / delete ---------- */
-
-let pending = null; // { boulderId, name, key, vote }
-let voteIndex = 0;
+/* ---------- Event bindings ---------- */
 
 function bindUI() {
   $("close").addEventListener("click", closeDetail);
@@ -723,170 +957,28 @@ function bindUI() {
   $("player-close").addEventListener("click", () => $("player").close());
   $("player").addEventListener("close", () => $("player-frame").replaceChildren());
 
-  $("open-form").addEventListener("click", openForm);
-  $("form-cancel").addEventListener("click", closeForm);
-  $("choice-cancel").addEventListener("click", closeForm);
-  $("name-input").addEventListener("input", updateFormState);
-  $("vote-toggle").addEventListener("change", updateFormState);
+  $("user-btn").addEventListener("click", () => openUserDialog());
+  $("user-input").addEventListener("input", updateUserForm);
+  $("user-form").addEventListener("submit", onUserSubmit);
+  $("user-cancel").addEventListener("click", () => $("user-dialog").close());
+  $("user-signout").addEventListener("click", signOut);
+  $("user-dialog").addEventListener("close", () => {
+    state.signInThen = null;
+  });
+
+  $("btn-complete").addEventListener("click", completeBoulder);
+  $("btn-grade").addEventListener("click", openVotePrompt);
+  $("btn-cancel").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "cancel"));
   $("step-down").addEventListener("click", () => stepVote(-1));
   $("step-up").addEventListener("click", () => stepVote(1));
-  $("record-form").addEventListener("submit", onFormSubmit);
-  $("choice-update").addEventListener("click", () => commitRecord("save"));
-  $("choice-delete").addEventListener("click", () => commitRecord("delete"));
-  $("choice-other").addEventListener("click", () => {
-    showFormStep();
-    $("name-input").value = "";
-    updateFormState();
-    $("name-input").focus();
+  $("vote-close").addEventListener("click", () => {
+    state.voting = false;
+    renderDetail();
   });
-}
-
-function openForm() {
-  const boulder = currentBoulder();
-  if (!boulder) return;
-  voteIndex = Math.max(0, gradeIndex(boulder.grade));
-  $("name-input").value = loadName();
-  $("vote-toggle").checked = false;
-  $("record-status").textContent = "";
-  $("open-form").hidden = true;
-  showFormStep();
-  updateFormState();
-  $("record-form").scrollIntoView({ block: "nearest" });
-}
-
-function closeForm() {
-  pending = null;
-  $("record-form").hidden = true;
-  $("record-choice").hidden = true;
-  $("open-form").hidden = false;
-  $("record-error").textContent = "";
-}
-
-function showFormStep() {
-  $("record-form").hidden = false;
-  $("record-choice").hidden = true;
-  $("record-error").textContent = "";
-}
-
-function stepVote(delta) {
-  voteIndex += delta;
-  updateFormState();
-}
-
-function updateFormState() {
-  const boulder = currentBoulder();
-  if (!boulder) return;
-  const base = gradeIndex(boulder.grade);
-  const canVote = base >= 0;
-  const voting = canVote && $("vote-toggle").checked;
-
-  $("vote-row").hidden = !canVote;
-  $("stepper").hidden = !voting;
-  $("step-hint").hidden = !voting;
-  if (voting) {
-    const [low, high] = voteWindow(base);
-    voteIndex = Math.min(high, Math.max(low, voteIndex));
-    $("step-value").replaceChildren(gradeChip(GRADES[voteIndex], "big"));
-    $("step-down").disabled = voteIndex <= low;
-    $("step-up").disabled = voteIndex >= high;
-    $("step-hint").textContent =
-      voteIndex === base
-        ? `Même niveau que le bloc (${boulder.grade})`
-        : voteIndex < base
-          ? `Plus facile que le bloc (${boulder.grade})`
-          : `Plus dur que le bloc (${boulder.grade})`;
-  }
-  $("record-submit").disabled = !cleanName($("name-input").value);
-}
-
-function setBusy(busy) {
-  for (const element of document.querySelectorAll("#record-form button, #record-form input, #record-choice button")) {
-    element.disabled = busy;
-  }
-  if (!busy) updateFormState();
-}
-
-async function onFormSubmit(event) {
-  event.preventDefault();
-  const boulder = currentBoulder();
-  const name = cleanName($("name-input").value);
-  if (!boulder || !name) return;
-
-  const base = gradeIndex(boulder.grade);
-  const vote = base >= 0 && $("vote-toggle").checked ? GRADES[voteIndex] : null;
-  pending = { boulderId: boulder.id, name, key: nameKey(name), vote };
-
-  setBusy(true);
-  $("record-error").textContent = "";
-  const ok = await fetchRecords(); // always check against fresh data
-  setBusy(false);
-  if (!pending) return; // closed meanwhile
-  syncUI();
-  if (!ok) {
-    $("record-error").textContent = ERROR_NETWORK;
-    return;
-  }
-
-  const existing = (state.records[pending.boulderId] || {})[pending.key];
-  if (existing) {
-    showChoiceStep(existing);
-  } else {
-    await commitRecord("save");
-  }
-}
-
-function showChoiceStep(existing) {
-  pending.name = existing.name || pending.name; // keep the capitalization first used
-  $("record-form").hidden = true;
-  $("record-choice").hidden = false;
-  $("record-error").textContent = "";
-  const previous = gradeIndex(existing.vote) >= 0 ? ` (avis : ${existing.vote})` : "";
-  $("choice-text").textContent = `« ${pending.name} » a déjà réussi ce bloc${previous}.`;
-  $("choice-update").textContent = pending.vote
-    ? `Mettre à jour (avis : ${pending.vote})`
-    : "Mettre à jour (sans avis)";
-}
-
-async function commitRecord(action) {
-  if (!pending) return;
-  const { boulderId, name, key, vote } = pending;
-  setBusy(true);
-  $("record-error").textContent = "";
-  try {
-    const path = new fb.FieldPath(boulderId, key);
-    if (action === "delete") {
-      await fb.updateDoc(fb.records, path, fb.deleteField());
-      if (state.records[boulderId]) delete state.records[boulderId][key];
-    } else {
-      const entry = vote ? { name, vote } : { name };
-      if (state.recordsExists) {
-        await fb.updateDoc(fb.records, path, entry); // replaces the whole entry
-      } else {
-        await fb.setDoc(fb.records, { [boulderId]: { [key]: entry } });
-      }
-      state.recordsExists = true;
-      state.records[boulderId] = { ...(state.records[boulderId] || {}), [key]: entry };
-    }
-    saveName(name);
-    setBusy(false);
-    closeForm();
-    syncUI();
-    flashStatus(action === "delete" ? "Réussite supprimée." : "Réussite enregistrée.");
-  } catch (error) {
-    console.error(error);
-    setBusy(false);
-    $("record-error").textContent = ERROR_NETWORK;
-  }
-}
-
-let statusTimer = null;
-
-function flashStatus(message) {
-  $("record-status").textContent = message;
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    $("record-status").textContent = "";
-  }, 3000);
+  $("vote-submit").addEventListener("click", () => {
+    if (state.currentId) writeRecord(state.currentId, "vote", GRADES[voteIndex]);
+  });
+  $("vote-remove").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "unvote"));
 }
 
 /* ---------- Beta (videos) ---------- */

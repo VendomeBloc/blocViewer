@@ -41,14 +41,17 @@ The boulder list lives in Firestore (`boulders/all`). The first time the site lo
 
 There is no edit mode yet. To change boulders: edit `data/boulders.json` on GitHub, then in the Firebase console (Firestore) delete the `boulders/all` document. The next visit to the site recreates it from the file.
 
-## Grades, completions and opinions
+## Users, completions and opinions
 
-- The displayed grade of a boulder is its set `grade`. Climbers never change it.
-- A climber taps "J'ai réussi", enters a name, and may add an opinion on the grade: a stepper starts on the set grade and moves one grade at a time, at most 3 grades up or down.
-- Opinions need a completion. A completion without opinion is fine.
-- Names are matched ignoring capitals and extra spaces. If a name already has a record on the boulder, the climber chooses: update, delete, or use another name.
-- The detail view shows who completed the boulder and a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the remembered name.
+- There are no accounts and no password. A visitor starts as a guest ("Invité"). They sign in by typing a name, either from the header or when they tap "J'ai réussi". The name is remembered on the phone; the same name on another phone gives the same records.
+- Names are matched ignoring capitals and extra spaces. Someone can sign out from the header (back to guest).
+- Tapping "J'ai réussi" records the completion at once, with no confirmation. A completed boulder then offers two buttons: "Donner / Modifier mon avis" and "Annuler ma réussite" (which removes the completion and the opinion, with no confirmation).
+- "Donner mon avis" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
+- Opinions never change the displayed grade, which is always the set `grade`.
+- The header shows the signed-in user, the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder.
+- The detail view shows who completed the boulder and a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
+- Zooming (pinch and double-tap) is disabled.
 
 ## Database (Firestore)
 

@@ -30,7 +30,11 @@
   }
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  touch-action: pan-x pan-y; /* no pinch zoom, no double-tap zoom */
+  -webkit-tap-highlight-color: transparent;
+}
 [hidden] { display: none !important; }
 
 body {
@@ -44,10 +48,44 @@ body {
 .app-header {
   background: #1f2937;
   color: #fff;
-  padding: 16px;
+  padding: 14px 16px 12px;
 }
 .app-header h1 { margin: 0; font-size: 1.4rem; }
-.subtitle { margin: 4px 0 0; color: #cbd5e1; font-size: .9rem; }
+.user-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.user-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 14px 4px 5px;
+  border: 1px solid rgba(255, 255, 255, .3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 700;
+}
+.user-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.user-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9em; }
+.user-hint { color: #cbd5e1; font-size: .72rem; }
+.user-stats { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.stat { text-align: center; line-height: 1.15; }
+.stat strong, .stat-value { display: block; min-height: 1.5rem; font-size: 1.15rem; font-weight: 700; }
+.stat small { display: block; color: #cbd5e1; font-size: .65rem; }
+.chip.header { min-width: 0; padding: 1px 10px; font-size: 1rem; border-radius: 8px; }
 
 main { max-width: 720px; margin: 0 auto; padding: 16px; }
 
@@ -222,14 +260,23 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .detail-head { display: flex; justify-content: space-between; align-items: center; }
 .detail-head h2 { margin: 0; font-size: 1.3rem; }
 .close {
-  border: none;
-  background: transparent;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 0 3px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg);
   color: var(--text);
-  font-size: 2rem;
+  font-size: 1.6rem;
   line-height: 1;
-  padding: 0 8px;
   cursor: pointer;
 }
+.close:focus, .player-close:focus, .detail-head h2:focus { outline: none; }
+.close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .detail-meta { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
 .setter { color: var(--muted); }
 .photo img { width: 100%; height: auto; border-radius: 10px; display: block; }
@@ -261,29 +308,10 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .my-record { margin: 8px 0 0; color: var(--ok); font-weight: 600; }
 .btn.wide { width: 100%; margin-top: 12px; }
 
-/* Record form */
-.record-form { margin-top: 12px; }
-.field-label { display: block; margin-bottom: 4px; font-size: .9rem; color: var(--muted); }
-.record-form input[type="text"] {
-  width: 100%;
-  padding: 12px;
-  font: inherit;
-  font-size: 1rem;
-  color: var(--text);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.switch {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  min-height: 44px;
-  cursor: pointer;
-}
-.switch input { width: 22px; height: 22px; accent-color: var(--accent); }
-.stepper { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 6px; }
+/* Vote prompt (opens after tapping "Donner mon avis") */
+.vote-prompt { margin-top: 12px; }
+.vote-title { margin: 0 0 8px; font-weight: 600; text-align: center; }
+.stepper { display: flex; align-items: center; justify-content: center; gap: 16px; }
 .step-btn {
   width: 52px;
   height: 52px;
@@ -298,10 +326,23 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .step-btn:disabled { opacity: .35; }
 .step-value { display: block; min-width: 84px; text-align: center; }
 .step-hint { margin: 6px 0 0; color: var(--muted); font-size: .85rem; text-align: center; }
-.record-choice { margin-top: 12px; }
-.choice-text { margin: 0; font-weight: 600; }
 .form-error { min-height: 1.2em; margin: 10px 0 0; color: var(--danger); font-size: .9rem; }
 .rate-status { min-height: 1.4em; margin: 4px 0 0; color: var(--accent); font-weight: 600; }
+
+/* Name dialog */
+dialog.small-dialog { width: min(88vw, 400px); }
+.small-dialog h2 { margin: 0; font-size: 1.2rem; }
+.user-intro { margin: 4px 0 12px; color: var(--muted); }
+.small-dialog input[type="text"] {
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
 
 /* Votes chart */
 .chart { display: grid; gap: 4px; }
@@ -348,7 +389,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.link { border-color: transparent; background: transparent; color: var(--muted); }
 .btn.small { padding: 8px 12px; font-size: .85rem; }
-.btn:disabled, .record-form input:disabled { opacity: .45; }
+.btn:disabled { opacity: .45; }
 
 /* Beta section */
 .beta-videos {
