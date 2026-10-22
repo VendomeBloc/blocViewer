@@ -35,7 +35,6 @@ const state = {
   boulders: null, // null while nothing is known yet
   zone: "all", // "all" or a zone id (number)
   grade: -1, // grade group filter: index in GRADE_GROUPS, -1 = all grades
-  namesOpen: false, // the list of climbers is expanded in the detail view
   records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
   lastFetch: 0,
   status: "loading", // "loading" | "ok" | "failed"
@@ -853,6 +852,7 @@ function onDetailClosed() {
   if ($("detail").open) return;
   const closedId = state.currentId;
   if ($("player").open) $("player").close();
+  if ($("done-dialog").open) $("done-dialog").close();
   $("beta-videos").replaceChildren();
   $("record-status").textContent = "";
   $("record-error").textContent = "";
@@ -886,7 +886,6 @@ function syncDetailWithHash() {
   if (fresh) {
     state.selectedBar = null;
     state.voting = false;
-    state.namesOpen = false;
     $("record-status").textContent = "";
     $("record-error").textContent = "";
     fillDetailStatic(boulder);
@@ -944,21 +943,11 @@ function buildPhoto(boulder) {
 
 function renderDone(boulder) {
   const info = recordsInfo(boulder.id);
-  const count = $("done-count");
-  const names = $("done-names");
   const toggle = $("done-toggle");
-  const empty = !info || info.done === 0;
-  if (!info) {
-    count.textContent = state.status === "failed" ? "Réussites indisponibles" : "Chargement…";
-  } else {
-    count.textContent = info.done <= 1 ? `${info.done} réussite` : `${info.done} réussites`;
-    names.textContent = info.names.join(", ");
-  }
-  toggle.disabled = empty;
-  const open = !empty && state.namesOpen;
-  toggle.setAttribute("aria-expanded", String(open));
-  toggle.classList.toggle("open", open);
-  names.hidden = !open;
+  toggle.textContent = info ? String(info.done) : "–";
+  toggle.disabled = !info || info.done === 0;
+  toggle.setAttribute("aria-label", info ? `${completionText(info.done)}, voir la liste` : "Réussites");
+  if ($("done-dialog").open) renderDoneList(boulder);
 
   const mine = myEntry(boulder.id);
   const base = gradeIndex(boulder.grade);
@@ -966,7 +955,7 @@ function renderDone(boulder) {
 
   const myRecord = $("my-record");
   if (mine) {
-    myRecord.textContent = `✓ Réussi${hasVote ? ` · ton avis : ${mine.vote}` : ""}`;
+    myRecord.textContent = `Réussi${hasVote ? ` · ${mine.vote}` : ""}`;
     myRecord.hidden = false;
   } else {
     myRecord.hidden = true;
@@ -977,10 +966,32 @@ function renderDone(boulder) {
   $("btn-complete").disabled = state.busy;
   $("completed-actions").hidden = !mine || state.voting;
   $("btn-grade").hidden = base < 0;
-  $("btn-grade").textContent = hasVote ? "Modifier mon avis" : "Donner mon avis";
   $("btn-grade").disabled = state.busy;
   $("btn-cancel").disabled = state.busy;
   renderVotePrompt(boulder, mine);
+}
+
+// Pop-up list of the climbers who validated the boulder, with their opinion if any.
+function renderDoneList(boulder) {
+  const entries = Object.values((state.records || {})[boulder.id] || {}).filter((e) => e && typeof e.name === "string");
+  entries.sort((a, b) => byName(a.name, b.name));
+  const me = state.user ? nameKey(state.user) : null;
+  $("done-list").replaceChildren(
+    ...entries.map((entry) => {
+      const li = document.createElement("li");
+      li.classList.toggle("me", nameKey(entry.name) === me);
+      const name = document.createElement("span");
+      name.className = "power-name";
+      name.textContent = entry.name;
+      li.appendChild(name);
+      if (gradeIndex(entry.vote) >= 0) {
+        const chip = gradeChip(entry.vote, "small");
+        chip.classList.add("inline");
+        li.appendChild(chip);
+      }
+      return li;
+    }),
+  );
 }
 
 function renderVotePrompt(boulder, mine) {
@@ -1186,8 +1197,14 @@ function bindUI() {
   });
 
   $("done-toggle").addEventListener("click", () => {
-    state.namesOpen = !state.namesOpen;
-    renderDetail();
+    const boulder = currentBoulder();
+    if (!boulder) return;
+    renderDoneList(boulder);
+    $("done-dialog").showModal();
+  });
+  $("done-close").addEventListener("click", () => $("done-dialog").close());
+  $("done-dialog").addEventListener("click", (event) => {
+    if (event.target === $("done-dialog")) $("done-dialog").close(); // tap outside
   });
   $("btn-complete").addEventListener("click", completeBoulder);
   $("btn-grade").addEventListener("click", openVotePrompt);

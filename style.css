@@ -320,26 +320,20 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .panel-help { margin: 2px 0 10px; color: var(--muted); font-size: .85rem; }
 
 /* Completions */
-.done-tile {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--text);
+.panel-head { display: flex; align-items: center; gap: 10px; }
+.count-pill {
+  min-width: 38px;
+  padding: 3px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
   font: inherit;
-  font-size: 1.05rem;
   font-weight: 700;
+  text-align: center;
   cursor: pointer;
 }
-.done-tile:disabled { cursor: default; opacity: 1; }
-.done-tile:disabled .chev { visibility: hidden; }
-.done-tile .chev { transition: transform .15s; }
-.done-tile.open .chev { transform: rotate(180deg); }
-.done-names { margin: 6px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.count-pill:disabled { background: var(--border); color: var(--muted); cursor: default; }
 .my-record { margin: 6px 0 0; color: var(--ok); font-weight: 600; }
 .btn.wide { display: block; width: 100%; margin-top: 10px; }
 
@@ -541,6 +535,8 @@ dialog.player[open] { display: flex; flex-direction: column; }
   background: var(--bg);
 }
 .power-name { font-weight: 600; overflow-wrap: anywhere; }
+.power-list li.me { background: rgba(37, 99, 235, .14); }
+.chip.inline { width: auto; min-width: 44px; padding: 3px 8px; flex: none; }
 .power-list small { color: var(--muted); }
 .power-form { display: flex; gap: 8px; }
 .power-form input { flex: 1; min-width: 0; }
@@ -615,3 +611,6 @@ dialog.player[open] { display: flex; flex-direction: column; }
 .rank-table td:last-child { width: 56px; }
 .rank-name { font-weight: 600; overflow-wrap: anywhere; }
 .rank-table tr.me td { background: rgba(37, 99, 235, .14); }
+
+/* "Validé par" pop-up: narrower than the boulder view */
+dialog#done-dialog { width: min(78vw, 340px); max-height: 70vh; }

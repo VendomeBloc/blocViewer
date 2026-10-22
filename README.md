@@ -54,14 +54,14 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 
 ## Users, completions and opinions
 
-- There are no accounts and no password. A visitor starts as a guest ("Invité"). They sign in by typing a name, either from the header or when they tap "J'ai réussi". The name is remembered on the phone; the same name on another phone gives the same records.
+- There are no accounts and no password. A visitor starts as a guest ("Invité"). They sign in by typing a name, either from the header or when they tap "Valider". The name is remembered on the phone; the same name on another phone gives the same records.
 - Names are matched ignoring capitals and extra spaces. Someone can sign out from the header (back to guest).
-- Tapping "J'ai réussi" records the completion at once, with no confirmation. A completed boulder then offers two buttons: "Donner / Modifier mon avis" and "Annuler ma réussite" (which removes the completion and the opinion, with no confirmation).
-- "Donner mon avis" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
+- Tapping "Valider" records the completion at once, with no confirmation. A completed boulder then offers two buttons: "Noter" and "Annuler" (which removes the completion and the opinion, with no confirmation).
+- "Noter" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
 - Opinions never change the displayed grade, which is always the set `grade`.
 - The header shows "USVME", the signed-in user, and (second line) the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder. Tapping that line opens the ranking of all users (completed boulders descending, then hardest grade).
 - The level filter is a single - / + selector ("Tous", 2, 3, 4, 5, 6, 7) that shows the boulders of that group of grades (6 = 6a to 6c+); the chip keeps the grade color. The round arrow resets it.
-- The detail view has a "n réussites" tile that unfolds the list of climbers, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
+- The detail view has a "Validé : (n)" title whose oval opens a pop-up with the climbers and their opinions, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
 - Zooming (pinch and double-tap) is disabled.
 

@@ -81,19 +81,18 @@
 
     <div id="detail-photo" class="photo"></div>
 
-    <section class="panel done-panel" aria-label="Réussites">
-      <button id="done-toggle" class="done-tile" type="button" aria-expanded="false" aria-controls="done-names">
-        <span id="done-count">0 réussite</span>
-        <span class="chev" aria-hidden="true">&#9662;</span>
-      </button>
-      <p id="done-names" class="done-names" hidden></p>
+    <section class="panel done-panel" aria-labelledby="done-title">
+      <div class="panel-head">
+        <h3 id="done-title">Validé :</h3>
+        <button id="done-toggle" class="count-pill" type="button" aria-haspopup="dialog">0</button>
+      </div>
       <p id="my-record" class="my-record" hidden></p>
 
-      <button id="btn-complete" class="btn primary wide" type="button">J'ai réussi</button>
+      <button id="btn-complete" class="btn primary wide" type="button">Valider</button>
 
       <div id="completed-actions" class="actions" hidden>
-        <button id="btn-grade" class="btn primary" type="button">Donner mon avis</button>
-        <button id="btn-cancel" class="btn danger" type="button">Annuler ma réussite</button>
+        <button id="btn-grade" class="btn primary" type="button">Noter</button>
+        <button id="btn-cancel" class="btn danger" type="button">Annuler</button>
       </div>
 
       <div id="vote-prompt" class="vote-prompt" hidden>
@@ -132,6 +131,14 @@
       <h3 id="detail-admin-title">Gestion</h3>
       <button id="btn-edit" class="btn secondary wide" type="button">Modifier ce bloc</button>
     </section>
+  </dialog>
+
+  <dialog id="done-dialog" class="small-dialog" aria-labelledby="done-dialog-title">
+    <div class="detail-head">
+      <h2 id="done-dialog-title" tabindex="-1" autofocus>Validé par</h2>
+      <button id="done-close" class="close" type="button" aria-label="Fermer">&times;</button>
+    </div>
+    <ul id="done-list" class="power-list"></ul>
   </dialog>
 
   <dialog id="user-dialog" class="small-dialog" aria-labelledby="user-title">
