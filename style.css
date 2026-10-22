@@ -603,7 +603,11 @@ dialog.player[open] { display: flex; flex-direction: column; }
 .delete-zone { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
 .delete-warning { margin: 8px 0 0; color: var(--danger); font-weight: 600; }
 
+/* Phones: keep the small dialogs in the upper part, so a keyboard never covers them. */
+#user-dialog, #power-dialog, #userdel-dialog { margin-top: 12vh; }
+
 /* Ranking */
+.power-list li.userdel-confirm { display: block; border-color: var(--danger); }
 .rank-table { width: 100%; margin-top: 8px; border-collapse: collapse; }
 .rank-table th { padding: 4px 6px; color: var(--muted); font-size: .75rem; font-weight: 600; text-align: left; }
 .rank-table td { padding: 8px 6px; border-top: 1px solid var(--border); }

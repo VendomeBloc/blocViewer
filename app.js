@@ -429,20 +429,32 @@ function renderUserBar() {
 function openUserDialog(then = null) {
   state.signInThen = then;
   $("user-title").textContent = state.user ? "Changer de nom" : "Qui es-tu ?";
-  $("user-intro").textContent =
-    then === "complete"
-      ? "Entre ton nom pour enregistrer ta réussite."
-      : "Entre ton nom pour suivre tes réussites. Pas de mot de passe : le même nom retrouve les mêmes réussites.";
   $("user-input").value = state.user;
   $("user-signout").hidden = !state.user;
   updateUserForm();
-  const { scrollX, scrollY } = window;
+  // The page behind must not move. The input is not focused on open (that would pop
+  // up the keyboard, which makes phones scroll); the title takes the focus instead.
+  pinScroll($("user-dialog"));
   $("user-dialog").showModal();
-  $("user-input").focus({ preventScroll: true });
-  $("user-input").select();
-  // Opening the dialog must not move the page behind it.
-  window.scrollTo(scrollX, scrollY);
-  requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+}
+
+// Keeps the page where it was while a dialog is open (phone keyboards shift the view).
+function pinScroll(dialog) {
+  const { scrollX, scrollY } = window;
+  const restore = () => {
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) window.scrollTo(scrollX, scrollY);
+  };
+  const viewport = window.visualViewport;
+  window.addEventListener("scroll", restore);
+  if (viewport) viewport.addEventListener("resize", restore);
+  dialog.addEventListener(
+    "close",
+    () => {
+      window.removeEventListener("scroll", restore);
+      if (viewport) viewport.removeEventListener("resize", restore);
+    },
+    { once: true },
+  );
 }
 
 function updateUserForm() {
@@ -507,6 +519,110 @@ function renderRanking() {
       return tr;
     }),
   );
+}
+
+/* ---------- Deleting a user (power users): erases all of their records ---------- */
+
+let userDelConfirmKey = null; // user whose deletion is awaiting confirmation
+let userDelBusy = false;
+
+function openUserDelete() {
+  if (!canManage()) return;
+  userDelConfirmKey = null;
+  $("userdel-error").textContent = "";
+  pinScroll($("userdel-dialog"));
+  renderUserDelete();
+  $("userdel-dialog").showModal();
+}
+
+function renderUserDelete() {
+  const rows = computeRanking().sort((a, b) => byName(a.name, b.name));
+  $("userdel-empty").hidden = rows.length > 0;
+  const items = rows.flatMap((row) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "power-name";
+    label.textContent = `${row.name} (${row.count})`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn small danger";
+    button.textContent = "Supprimer";
+    button.disabled = userDelBusy;
+    button.setAttribute("aria-label", `Supprimer ${row.name}`);
+    button.addEventListener("click", () => {
+      userDelConfirmKey = row.key;
+      $("userdel-error").textContent = "";
+      renderUserDelete();
+    });
+    li.append(label, button);
+    if (userDelConfirmKey !== row.key) return [li];
+
+    const confirm = document.createElement("li");
+    confirm.className = "userdel-confirm";
+    const message = document.createElement("p");
+    message.className = "delete-warning";
+    message.textContent = `Effacer ${row.name} et toutes ses réussites et avis ?`;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "btn secondary";
+    no.textContent = "Non";
+    no.disabled = userDelBusy;
+    no.addEventListener("click", () => {
+      userDelConfirmKey = null;
+      renderUserDelete();
+    });
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "btn danger";
+    yes.textContent = "Effacer";
+    yes.disabled = userDelBusy;
+    yes.addEventListener("click", () => deleteUserRecords(row.key));
+    actions.append(no, yes);
+    confirm.append(message, actions);
+    return [li, confirm];
+  });
+  $("userdel-list").replaceChildren(...items);
+}
+
+async function deleteUserRecords(key) {
+  if (userDelBusy || !canManage()) return;
+  userDelBusy = true;
+  renderUserDelete();
+  try {
+    await withTimeout(
+      (async () => {
+        await connectFirebase();
+        const snapshot = await fb.getDoc(fb.records);
+        const data = snapshot.exists() ? snapshot.data() : {};
+        const args = [];
+        for (const [boulderId, entries] of Object.entries(data)) {
+          if (entries && entries[key]) args.push(new fb.FieldPath(boulderId, key), fb.deleteField());
+        }
+        if (args.length) await fb.updateDoc(fb.records, ...args);
+        // Mirror the fresh copy locally.
+        const local = {};
+        for (const [boulderId, entries] of Object.entries(data)) {
+          const { [key]: removed, ...rest } = entries || {};
+          local[boulderId] = rest;
+        }
+        state.records = local;
+        state.lastFetch = Date.now();
+      })(),
+      REQUEST_TIMEOUT_MS,
+    );
+    userDelConfirmKey = null;
+    flashStatus("Utilisateur supprimé.", "admin-status");
+  } catch (error) {
+    console.error(error);
+    userDelConfirmKey = null;
+    $("userdel-error").textContent = ERROR_NETWORK;
+  } finally {
+    userDelBusy = false;
+    syncUI();
+    if ($("userdel-dialog").open) renderUserDelete();
+  }
 }
 
 function openRanking() {
@@ -1207,6 +1323,7 @@ let powerBusy = false;
 
 function openPowerDialog() {
   if (!canManage()) return;
+  pinScroll($("power-dialog"));
   $("power-error").textContent = "";
   $("power-input").value = "";
   updatePowerForm();
@@ -1552,6 +1669,8 @@ function bindManagement() {
 
   $("btn-add").addEventListener("click", () => openBoulderForm(null));
   $("btn-power").addEventListener("click", openPowerDialog);
+  $("btn-userdel").addEventListener("click", openUserDelete);
+  $("userdel-close").addEventListener("click", () => $("userdel-dialog").close());
   $("btn-edit").addEventListener("click", () => openBoulderForm(currentBoulder()));
 
   $("power-close").addEventListener("click", () => $("power-dialog").close());

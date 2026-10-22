@@ -64,6 +64,7 @@
       <div class="actions column">
         <button id="btn-add" class="btn primary" type="button">Ajouter un bloc</button>
         <button id="btn-power" class="btn secondary" type="button">Utilisateurs avancés</button>
+        <button id="btn-userdel" class="btn secondary" type="button">Supprimer un utilisateur</button>
       </div>
       <p id="admin-status" class="rate-status" role="status"></p>
     </section>
@@ -134,8 +135,7 @@
   </dialog>
 
   <dialog id="user-dialog" class="small-dialog" aria-labelledby="user-title">
-    <h2 id="user-title">Qui es-tu ?</h2>
-    <p id="user-intro" class="user-intro"></p>
+    <h2 id="user-title" tabindex="-1" autofocus>Qui es-tu ?</h2>
     <form id="user-form" autocomplete="off">
       <input id="user-input" type="text" maxlength="20"
              autocomplete="nickname" autocapitalize="words" autocorrect="off"
@@ -160,6 +160,16 @@
       <button id="power-add" class="btn primary" type="submit" disabled>Ajouter</button>
     </form>
     <p id="power-error" class="form-error" role="alert"></p>
+  </dialog>
+
+  <dialog id="userdel-dialog" class="small-dialog" aria-labelledby="userdel-title">
+    <div class="detail-head">
+      <h2 id="userdel-title" tabindex="-1" autofocus>Supprimer un utilisateur</h2>
+      <button id="userdel-close" class="close" type="button" aria-label="Fermer">&times;</button>
+    </div>
+    <ul id="userdel-list" class="power-list"></ul>
+    <p id="userdel-empty" class="empty" hidden>Aucun utilisateur n'a de réussite.</p>
+    <p id="userdel-error" class="form-error" role="alert"></p>
   </dialog>
 
   <dialog id="boulder-dialog" aria-labelledby="boulder-title">

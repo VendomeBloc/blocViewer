@@ -48,6 +48,8 @@ Photos stay in GitHub. After uploading a photo to `photos/`, add its file name t
 
 ## Power users
 
+Power users also have a "Supprimer un utilisateur" button in the Gestion section: it lists everyone with completions and erases all of one user's completions and opinions, after a confirmation.
+
 The list of power users is stored in Firestore (`config/powerusers`, created with `admin` on first load). A user is a power user if the name they sign in with is in the list (capitals ignored). "admin" cannot be removed. This only keeps the extra buttons away from ordinary users; it is not a security measure.
 
 ## Users, completions and opinions
