@@ -10,6 +10,15 @@ const GRADES = [
   "7a", "7a+", "7b", "7b+", "7c", "7c+",
 ];
 const LAST_GRADE = GRADES.length - 1;
+// The level filter works on groups of grades (all the 5s, all the 6s...).
+const GRADE_GROUPS = [
+  { label: "2", from: 0, to: 0 },
+  { label: "3", from: 1, to: 1 },
+  { label: "4", from: 2, to: 4 },
+  { label: "5", from: 5, to: 7 },
+  { label: "6", from: 8, to: 13 },
+  { label: "7", from: 14, to: 19 },
+];
 const VOTE_WINDOW = 3; // a vote can differ from the set grade by at most 3 grades
 
 const ADMIN_NAME = "admin"; // always a power user, cannot be removed
@@ -25,7 +34,8 @@ const state = {
   zones: [],
   boulders: null, // null while nothing is known yet
   zone: "all", // "all" or a zone id (number)
-  grade: -1, // exact grade filter: index in GRADES, -1 = all grades
+  grade: -1, // grade group filter: index in GRADE_GROUPS, -1 = all grades
+  namesOpen: false, // the list of climbers is expanded in the detail view
   records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
   lastFetch: 0,
   status: "loading", // "loading" | "ok" | "failed"
@@ -333,6 +343,7 @@ function syncUI() {
   renderAdmin();
   render();
   if (state.currentId) renderDetail();
+  if ($("rank-dialog").open) renderRanking();
 }
 
 /* ---------- Names and records (completions and optional votes) ---------- */
@@ -459,6 +470,53 @@ function signOut() {
   syncUI();
 }
 
+/* ---------- Ranking of all users ---------- */
+
+// One row per user with at least one completed boulder: count and hardest set grade.
+function computeRanking() {
+  const rows = new Map();
+  for (const boulder of state.boulders || []) {
+    const grade = gradeIndex(boulder.grade);
+    for (const [key, entry] of Object.entries((state.records || {})[boulder.id] || {})) {
+      if (!entry || typeof entry.name !== "string") continue;
+      const row = rows.get(key) || { key, name: entry.name, count: 0, hardest: -1 };
+      row.count += 1;
+      row.hardest = Math.max(row.hardest, grade);
+      rows.set(key, row);
+    }
+  }
+  return [...rows.values()].sort((a, b) => b.count - a.count || b.hardest - a.hardest || byName(a.name, b.name));
+}
+
+function renderRanking() {
+  const rows = computeRanking();
+  $("rank-empty").hidden = rows.length > 0;
+  $("rank-body").replaceChildren(
+    ...rows.map((row, index) => {
+      const tr = document.createElement("tr");
+      tr.classList.toggle("me", !!state.user && row.key === nameKey(state.user));
+      const cells = [String(index + 1), row.name, String(row.count)].map((text) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        return td;
+      });
+      cells[1].className = "rank-name";
+      const hardest = document.createElement("td");
+      hardest.appendChild(row.hardest >= 0 ? gradeChip(GRADES[row.hardest], "small") : "–");
+      tr.append(...cells, hardest);
+      return tr;
+    }),
+  );
+}
+
+function openRanking() {
+  renderRanking();
+  $("rank-dialog").showModal();
+  refreshRecords().then(() => {
+    if ($("rank-dialog").open) renderRanking();
+  });
+}
+
 /* ---------- Init ---------- */
 
 async function init() {
@@ -536,7 +594,7 @@ function setZone(zone) {
 
 function buildGradeControls() {
   $("grade-up").addEventListener("click", () => {
-    state.grade = Math.min(LAST_GRADE, state.grade + 1);
+    state.grade = Math.min(GRADE_GROUPS.length - 1, state.grade + 1);
     render();
   });
   $("grade-down").addEventListener("click", () => {
@@ -556,10 +614,14 @@ function renderGradeFilter() {
     chip.textContent = "Tous";
     $("grade-value").replaceChildren(chip);
   } else {
-    $("grade-value").replaceChildren(gradeChip(GRADES[state.grade], "big"));
+    // The chip takes the color of the middle grade of the group, but shows only the number.
+    const group = GRADE_GROUPS[state.grade];
+    const chip = gradeChip(GRADES[Math.floor((group.from + group.to) / 2)], "big");
+    chip.textContent = group.label;
+    $("grade-value").replaceChildren(chip);
   }
   $("grade-down").disabled = state.grade < 0;
-  $("grade-up").disabled = state.grade >= LAST_GRADE;
+  $("grade-up").disabled = state.grade >= GRADE_GROUPS.length - 1;
   $("reset-grade").disabled = state.grade < 0;
 }
 
@@ -574,7 +636,9 @@ function visibleBoulders() {
   return state.boulders
     .filter((boulder) => state.zone === "all" || boulder.zone === state.zone)
     .filter((boulder) => {
-      return state.grade < 0 || gradeIndex(boulder.grade) === state.grade;
+      if (state.grade < 0) return true;
+      const index = gradeIndex(boulder.grade);
+      return index >= GRADE_GROUPS[state.grade].from && index <= GRADE_GROUPS[state.grade].to;
     })
     .sort((a, b) => {
       const gradeA = gradeIndex(a.grade) < 0 ? 99 : gradeIndex(a.grade);
@@ -706,6 +770,7 @@ function syncDetailWithHash() {
   if (fresh) {
     state.selectedBar = null;
     state.voting = false;
+    state.namesOpen = false;
     $("record-status").textContent = "";
     $("record-error").textContent = "";
     fillDetailStatic(boulder);
@@ -765,15 +830,19 @@ function renderDone(boulder) {
   const info = recordsInfo(boulder.id);
   const count = $("done-count");
   const names = $("done-names");
+  const toggle = $("done-toggle");
+  const empty = !info || info.done === 0;
   if (!info) {
-    count.textContent = "–";
-    count.removeAttribute("aria-label");
-    names.textContent = state.status === "failed" ? "Réussites indisponibles pour le moment." : "Chargement…";
+    count.textContent = state.status === "failed" ? "Réussites indisponibles" : "Chargement…";
   } else {
-    count.textContent = String(info.done);
-    count.setAttribute("aria-label", completionText(info.done));
-    names.textContent = info.done === 0 ? "Personne pour l'instant." : info.names.join(", ");
+    count.textContent = info.done <= 1 ? `${info.done} réussite` : `${info.done} réussites`;
+    names.textContent = info.names.join(", ");
   }
+  toggle.disabled = empty;
+  const open = !empty && state.namesOpen;
+  toggle.setAttribute("aria-expanded", String(open));
+  toggle.classList.toggle("open", open);
+  names.hidden = !open;
 
   const mine = myEntry(boulder.id);
   const base = gradeIndex(boulder.grade);
@@ -850,13 +919,6 @@ function stepVote(delta) {
   renderDetail();
 }
 
-const SUCCESS_MESSAGES = {
-  complete: "Réussite enregistrée.",
-  vote: "Avis enregistré.",
-  unvote: "Avis retiré.",
-  cancel: "Réussite annulée.",
-};
-
 // action: "complete" | "vote" | "unvote" | "cancel". No confirmation is asked.
 async function writeRecord(boulderId, action, vote = null) {
   if (state.busy || !state.user) return;
@@ -899,7 +961,6 @@ async function writeRecord(boulderId, action, vote = null) {
     }
     state.records = { ...state.records, [boulderId]: entries };
     if (action !== "complete") state.voting = false;
-    flashStatus(SUCCESS_MESSAGES[action]);
   } catch (error) {
     console.error(error);
     $("record-error").textContent = ERROR_NETWORK;
@@ -998,6 +1059,8 @@ function bindUI() {
   $("player").addEventListener("close", () => $("player-frame").replaceChildren());
 
   $("user-btn").addEventListener("click", () => openUserDialog());
+  $("user-stats").addEventListener("click", openRanking);
+  $("rank-close").addEventListener("click", () => $("rank-dialog").close());
   $("user-input").addEventListener("input", updateUserForm);
   $("user-form").addEventListener("submit", onUserSubmit);
   $("user-cancel").addEventListener("click", () => $("user-dialog").close());
@@ -1006,6 +1069,10 @@ function bindUI() {
     state.signInThen = null;
   });
 
+  $("done-toggle").addEventListener("click", () => {
+    state.namesOpen = !state.namesOpen;
+    renderDetail();
+  });
   $("btn-complete").addEventListener("click", completeBoulder);
   $("btn-grade").addEventListener("click", openVotePrompt);
   $("btn-cancel").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "cancel"));
@@ -1258,6 +1325,7 @@ function setFormBusy(busy) {
 
 function renderPhotoPreview() {
   const box = $("f-photo-preview");
+  $("f-photo-clear").hidden = !formState.photo;
   if (!formState.photo) {
     box.className = "photo-preview empty";
     box.textContent = "Aucune photo";

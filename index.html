@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="theme-color" content="#1f2937">
-  <title>Blocs de la salle</title>
+  <title>USVME</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="app-header">
-    <h1>Blocs</h1>
-    <div class="user-bar">
+    <div class="header-top">
+      <h1>USVME</h1>
       <button id="user-btn" class="user-btn" type="button" aria-label="Changer d'utilisateur">
         <span id="user-avatar" class="avatar" aria-hidden="true">?</span>
         <span class="user-text">
@@ -18,17 +18,17 @@
           <small id="user-hint" class="user-hint">Se connecter</small>
         </span>
       </button>
-      <div id="user-stats" class="user-stats" hidden>
-        <div class="stat">
-          <strong id="stat-count">0/0</strong>
-          <small>réussis</small>
-        </div>
-        <div class="stat">
-          <span id="stat-hardest" class="stat-value">–</span>
-          <small>plus dur</small>
-        </div>
-      </div>
     </div>
+    <button id="user-stats" class="user-stats" type="button" aria-label="Voir le classement" hidden>
+      <span class="stat">
+        <strong id="stat-count">0/0</strong>
+        <small>réussis</small>
+      </span>
+      <span class="stat">
+        <span id="stat-hardest" class="stat-value">–</span>
+        <small>plus dur</small>
+      </span>
+    </button>
   </header>
 
   <main>
@@ -70,20 +70,22 @@
   </main>
 
   <dialog id="detail" aria-labelledby="detail-title">
+    <div class="close-wrap">
+      <button id="close" class="close floating" type="button" aria-label="Fermer">&times;</button>
+    </div>
     <div class="detail-head">
       <h2 id="detail-title" tabindex="-1" autofocus></h2>
-      <button id="close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
     <div id="detail-meta" class="detail-meta"></div>
 
     <div id="detail-photo" class="photo"></div>
 
-    <section class="panel" aria-labelledby="done-title">
-      <div class="panel-head">
-        <h3 id="done-title">Réussites</h3>
-        <span id="done-count" class="count-pill">0</span>
-      </div>
-      <p id="done-names" class="done-names"></p>
+    <section class="panel done-panel" aria-label="Réussites">
+      <button id="done-toggle" class="done-tile" type="button" aria-expanded="false" aria-controls="done-names">
+        <span id="done-count">0 réussite</span>
+        <span class="chev" aria-hidden="true">&#9662;</span>
+      </button>
+      <p id="done-names" class="done-names" hidden></p>
       <p id="my-record" class="my-record" hidden></p>
 
       <button id="btn-complete" class="btn primary wide" type="button">J'ai réussi</button>
@@ -114,18 +116,15 @@
 
     <section id="votes-panel" class="panel" aria-labelledby="votes-title">
       <h3 id="votes-title">Avis sur le niveau</h3>
-      <p class="panel-help">Avis des grimpeurs qui ont réussi le bloc. Ils ne changent pas le niveau affiché. Touche une barre pour voir qui a voté.</p>
       <div id="chart" class="chart"></div>
       <p id="voters" class="voters"></p>
     </section>
 
     <section class="panel" aria-labelledby="beta-title">
       <h3 id="beta-title">Beta</h3>
-      <p class="panel-help">Vidéos de résolution du bloc. Touche une vignette pour la regarder en plein écran.</p>
       <div id="beta-videos" class="beta-videos"></div>
       <p id="beta-empty" class="beta-empty" hidden>Pas encore de vidéo pour ce bloc.</p>
       <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
-      <p class="beta-hint">S'ouvre dans WhatsApp : choisis le groupe de la salle, colle ton lien YouTube et envoie.</p>
     </section>
 
     <section id="detail-admin" class="panel" aria-labelledby="detail-admin-title" hidden>
@@ -154,7 +153,6 @@
       <h2 id="power-title" tabindex="-1" autofocus>Utilisateurs avancés</h2>
       <button id="power-close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
-    <p class="user-intro">Ces utilisateurs voient les boutons de gestion des blocs. Ce n'est pas une mesure de sécurité.</p>
     <ul id="power-list" class="power-list"></ul>
     <form id="power-form" class="power-form" autocomplete="off">
       <input id="power-input" type="text" maxlength="20" autocapitalize="words" autocorrect="off"
@@ -196,7 +194,7 @@
         <div id="f-photo-preview" class="photo-preview"></div>
         <div class="actions">
           <button id="f-photo-pick" class="btn secondary small" type="button">Choisir une photo</button>
-          <button id="f-photo-clear" class="btn secondary small" type="button">Aucune photo</button>
+          <button id="f-photo-clear" class="btn secondary small" type="button" hidden>Retirer la photo</button>
         </div>
         <div id="photo-picker" class="photo-picker" hidden></div>
       </div>
@@ -224,6 +222,18 @@
         </div>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="rank-dialog" class="small-dialog" aria-labelledby="rank-title">
+    <div class="detail-head">
+      <h2 id="rank-title" tabindex="-1" autofocus>Classement</h2>
+      <button id="rank-close" class="close" type="button" aria-label="Fermer">&times;</button>
+    </div>
+    <table class="rank-table">
+      <thead><tr><th>#</th><th>Nom</th><th>Réussis</th><th>Plus dur</th></tr></thead>
+      <tbody id="rank-body"></tbody>
+    </table>
+    <p id="rank-empty" class="empty" hidden>Personne n'a encore réussi de bloc.</p>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">

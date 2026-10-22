@@ -52,8 +52,8 @@ body {
   color: #fff;
   padding: 14px 16px 12px;
 }
-.app-header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; text-align: center; }
-.user-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.app-header h1 { margin: 0; font-size: 1.7rem; font-weight: 800; letter-spacing: .02em; text-align: left; }
 .user-btn {
   display: flex;
   align-items: center;
@@ -83,8 +83,21 @@ body {
 .user-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .user-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9em; }
 .user-hint { color: #cbd5e1; font-size: .72rem; }
-.user-stats { display: flex; align-items: center; gap: 16px; margin-left: auto; }
-.stat { text-align: center; line-height: 1.15; }
+.user-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.stat { display: block; text-align: center; line-height: 1.15; }
 .stat strong, .stat-value { display: block; min-height: 1.5rem; font-size: 1.15rem; font-weight: 700; }
 .stat small { display: block; color: #cbd5e1; font-size: .65rem; }
 .chip.header { min-width: 0; padding: 1px 10px; font-size: 1rem; border-radius: 8px; }
@@ -253,6 +266,16 @@ dialog {
 dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .detail-head { display: flex; justify-content: space-between; align-items: center; }
 .detail-head h2 { margin: 0; font-size: 1.3rem; }
+#detail .detail-head h2 { padding-right: 52px; }
+/* The exit cross floats: it stays visible while the detail view scrolls. */
+.close-wrap { position: sticky; top: -8px; height: 0; z-index: 10; }
+.close.floating {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(0, 0, 0, .35);
+}
 .close {
   flex: none;
   display: flex;
@@ -297,16 +320,25 @@ dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .panel-help { margin: 2px 0 10px; color: var(--muted); font-size: .85rem; }
 
 /* Completions */
-.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.count-pill {
-  min-width: 28px;
-  padding: 1px 10px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
+.done-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
   font-weight: 700;
-  text-align: center;
+  cursor: pointer;
 }
+.done-tile:disabled { cursor: default; opacity: 1; }
+.done-tile:disabled .chev { visibility: hidden; }
+.done-tile .chev { transition: transform .15s; }
+.done-tile.open .chev { transform: rotate(180deg); }
 .done-names { margin: 6px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .my-record { margin: 6px 0 0; color: var(--ok); font-weight: 600; }
 .btn.wide { display: block; width: 100%; margin-top: 10px; }
@@ -484,7 +516,15 @@ dialog.player[open] { display: flex; flex-direction: column; }
 .player-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
 
 /* Management (power users) */
-.admin h2 { margin-bottom: 4px; }
+.admin {
+  margin-top: 48px;
+  padding-top: 16px;
+  border: 0;
+  border-top: 3px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.admin h2 { margin-bottom: 8px; color: var(--muted); }
 .btn.secondary { background: var(--card); }
 .btn.danger-text { color: var(--danger); }
 .muted { color: var(--muted); }
@@ -562,3 +602,12 @@ dialog.player[open] { display: flex; flex-direction: column; }
 .video-row input { flex: 1; min-width: 0; }
 .delete-zone { margin-top: 16px; padding-top: 8px; border-top: 1px solid var(--border); }
 .delete-warning { margin: 8px 0 0; color: var(--danger); font-weight: 600; }
+
+/* Ranking */
+.rank-table { width: 100%; margin-top: 8px; border-collapse: collapse; }
+.rank-table th { padding: 4px 6px; color: var(--muted); font-size: .75rem; font-weight: 600; text-align: left; }
+.rank-table td { padding: 8px 6px; border-top: 1px solid var(--border); }
+.rank-table th:nth-child(3), .rank-table td:nth-child(3) { text-align: center; }
+.rank-table td:last-child { width: 56px; }
+.rank-name { font-weight: 600; overflow-wrap: anywhere; }
+.rank-table tr.me td { background: rgba(37, 99, 235, .14); }

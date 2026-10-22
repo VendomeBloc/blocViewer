@@ -1,4 +1,4 @@
-# Blocs
+# USVME
 
 Static mobile-first site: zone map, boulder list with French grades, detail view with completions, climbers' opinions on the grade and "Beta" videos.
 Hosted on GitHub Pages. Boulders and climbers' records are stored in Firebase Firestore (free Spark plan).
@@ -57,9 +57,9 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 - Tapping "J'ai réussi" records the completion at once, with no confirmation. A completed boulder then offers two buttons: "Donner / Modifier mon avis" and "Annuler ma réussite" (which removes the completion and the opinion, with no confirmation).
 - "Donner mon avis" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
 - Opinions never change the displayed grade, which is always the set `grade`.
-- The header shows the signed-in user, the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder.
-- The level filter is a single - / + selector ("Tous", 2, 3, 4a ... 7c+) that shows only the boulders of exactly that grade; the round arrow resets it.
-- The detail view shows who completed the boulder and a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
+- The header shows "USVME", the signed-in user, and (second line) the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder. Tapping that line opens the ranking of all users (completed boulders descending, then hardest grade).
+- The level filter is a single - / + selector ("Tous", 2, 3, 4, 5, 6, 7) that shows the boulders of that group of grades (6 = 6a to 6c+); the chip keeps the grade color. The round arrow resets it.
+- The detail view has a "n réussites" tile that unfolds the list of climbers, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
 - Zooming (pinch and double-tap) is disabled.
 
