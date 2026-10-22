@@ -22,7 +22,7 @@
     <button id="user-stats" class="user-stats" type="button" aria-label="Voir le classement" hidden>
       <span class="stat">
         <strong id="stat-count">0/0</strong>
-        <small>réussis</small>
+        <small>validés</small>
       </span>
       <span class="stat">
         <span id="stat-hardest" class="stat-value">–</span>
@@ -175,7 +175,7 @@
       <button id="userdel-close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
     <ul id="userdel-list" class="power-list"></ul>
-    <p id="userdel-empty" class="empty" hidden>Aucun utilisateur n'a de réussite.</p>
+    <p id="userdel-empty" class="empty" hidden>Aucun utilisateur n'a de validation.</p>
     <p id="userdel-error" class="form-error" role="alert"></p>
   </dialog>
 
@@ -231,7 +231,7 @@
       <div id="delete-zone" class="delete-zone" hidden>
         <button id="boulder-delete" class="btn link wide danger-text" type="button">Supprimer ce bloc</button>
         <div id="delete-confirm" hidden>
-          <p class="delete-warning">Supprimer définitivement ce bloc, ses réussites et ses avis ?</p>
+          <p class="delete-warning">Supprimer définitivement ce bloc, ses validations et ses avis ?</p>
           <div class="actions">
             <button id="delete-no" class="btn secondary" type="button">Non</button>
             <button id="delete-yes" class="btn danger" type="button">Supprimer</button>
@@ -247,10 +247,10 @@
       <button id="rank-close" class="close" type="button" aria-label="Fermer">&times;</button>
     </div>
     <table class="rank-table">
-      <thead><tr><th>#</th><th>Nom</th><th>Réussis</th><th>Plus dur</th></tr></thead>
+      <thead><tr><th>#</th><th>Nom</th><th>Validés</th><th>Plus dur</th></tr></thead>
       <tbody id="rank-body"></tbody>
     </table>
-    <p id="rank-empty" class="empty" hidden>Personne n'a encore réussi de bloc.</p>
+    <p id="rank-empty" class="empty" hidden>Personne n'a encore validé de bloc.</p>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">

@@ -385,8 +385,8 @@ function myEntry(boulderId) {
 }
 
 function completionText(count) {
-  if (count === 0) return "aucune réussite";
-  return count === 1 ? "1 réussite" : `${count} réussites`;
+  if (count === 0) return "aucune validation";
+  return count === 1 ? "1 validation" : `${count} validations`;
 }
 
 /* ---------- User: guest or signed in with a name (no password) ---------- */
@@ -560,7 +560,7 @@ function renderUserDelete() {
     confirm.className = "userdel-confirm";
     const message = document.createElement("p");
     message.className = "delete-warning";
-    message.textContent = `Effacer ${row.name} et toutes ses réussites et avis ?`;
+    message.textContent = `Effacer ${row.name} et toutes ses validations et avis ?`;
     const actions = document.createElement("div");
     actions.className = "actions";
     const no = document.createElement("button");
@@ -812,7 +812,7 @@ function renderItem(boulder) {
     mark.className = "done-mark";
     mark.textContent = "✓";
     mark.setAttribute("role", "img");
-    mark.setAttribute("aria-label", "Réussi");
+    mark.setAttribute("aria-label", "Validé");
     swatch.appendChild(mark);
   }
 
@@ -946,7 +946,7 @@ function renderDone(boulder) {
   const toggle = $("done-toggle");
   toggle.textContent = info ? String(info.done) : "–";
   toggle.disabled = !info || info.done === 0;
-  toggle.setAttribute("aria-label", info ? `${completionText(info.done)}, voir la liste` : "Réussites");
+  toggle.setAttribute("aria-label", info ? `${completionText(info.done)}, voir la liste` : "Validations");
   if ($("done-dialog").open) renderDoneList(boulder);
 
   const mine = myEntry(boulder.id);
@@ -955,7 +955,7 @@ function renderDone(boulder) {
 
   const myRecord = $("my-record");
   if (mine) {
-    myRecord.textContent = `Réussi${hasVote ? ` · ${mine.vote}` : ""}`;
+    myRecord.textContent = `Validé${hasVote ? ` · ${mine.vote}` : ""}`;
     myRecord.hidden = false;
   } else {
     myRecord.hidden = true;
