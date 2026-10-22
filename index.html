@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>Blocs de la salle</h1>
+    <h1>Blocs</h1>
     <div class="user-bar">
       <button id="user-btn" class="user-btn" type="button" aria-label="Changer d'utilisateur">
         <span id="user-avatar" class="avatar" aria-hidden="true">?</span>
@@ -38,10 +38,12 @@
     </section>
 
     <section class="card filters" aria-label="Filtre par niveau">
-      <span>Niveau de</span>
-      <select id="min-grade" aria-label="Niveau minimum"></select>
-      <span>à</span>
-      <select id="max-grade" aria-label="Niveau maximum"></select>
+      <span>Niveau</span>
+      <div class="grade-filter">
+        <button id="grade-down" class="step-btn" type="button" aria-label="Niveau plus facile">&minus;</button>
+        <output id="grade-value" class="step-value" aria-live="polite"></output>
+        <button id="grade-up" class="step-btn" type="button" aria-label="Niveau plus dur">+</button>
+      </div>
       <button id="reset-grade" class="reset" type="button" aria-label="Réinitialiser le niveau" title="Réinitialiser le niveau">&#8635;</button>
     </section>
 
@@ -56,6 +58,15 @@
       <ul id="list" class="list"></ul>
       <p id="empty" class="empty" hidden>Aucun bloc ne correspond à ces filtres.</p>
     </section>
+
+    <section id="admin-section" class="card admin" aria-labelledby="admin-title" hidden>
+      <h2 id="admin-title">Gestion</h2>
+      <div class="actions column">
+        <button id="btn-add" class="btn primary" type="button">Ajouter un bloc</button>
+        <button id="btn-power" class="btn secondary" type="button">Utilisateurs avancés</button>
+      </div>
+      <p id="admin-status" class="rate-status" role="status"></p>
+    </section>
   </main>
 
   <dialog id="detail" aria-labelledby="detail-title">
@@ -68,8 +79,10 @@
     <div id="detail-photo" class="photo"></div>
 
     <section class="panel" aria-labelledby="done-title">
-      <h3 id="done-title">Réussites</h3>
-      <p id="done-count" class="done-count"></p>
+      <div class="panel-head">
+        <h3 id="done-title">Réussites</h3>
+        <span id="done-count" class="count-pill">0</span>
+      </div>
       <p id="done-names" class="done-names"></p>
       <p id="my-record" class="my-record" hidden></p>
 
@@ -114,6 +127,11 @@
       <a id="beta-submit" class="submit" target="_blank" rel="noopener">Proposer une vidéo</a>
       <p class="beta-hint">S'ouvre dans WhatsApp : choisis le groupe de la salle, colle ton lien YouTube et envoie.</p>
     </section>
+
+    <section id="detail-admin" class="panel" aria-labelledby="detail-admin-title" hidden>
+      <h3 id="detail-admin-title">Gestion</h3>
+      <button id="btn-edit" class="btn secondary wide" type="button">Modifier ce bloc</button>
+    </section>
   </dialog>
 
   <dialog id="user-dialog" class="small-dialog" aria-labelledby="user-title">
@@ -129,6 +147,83 @@
       </div>
     </form>
     <button id="user-signout" class="btn link wide" type="button" hidden>Se déconnecter (mode invité)</button>
+  </dialog>
+
+  <dialog id="power-dialog" class="small-dialog" aria-labelledby="power-title">
+    <div class="detail-head">
+      <h2 id="power-title" tabindex="-1" autofocus>Utilisateurs avancés</h2>
+      <button id="power-close" class="close" type="button" aria-label="Fermer">&times;</button>
+    </div>
+    <p class="user-intro">Ces utilisateurs voient les boutons de gestion des blocs. Ce n'est pas une mesure de sécurité.</p>
+    <ul id="power-list" class="power-list"></ul>
+    <form id="power-form" class="power-form" autocomplete="off">
+      <input id="power-input" type="text" maxlength="20" autocapitalize="words" autocorrect="off"
+             placeholder="Nom à ajouter" aria-label="Nom à ajouter">
+      <button id="power-add" class="btn primary" type="submit" disabled>Ajouter</button>
+    </form>
+    <p id="power-error" class="form-error" role="alert"></p>
+  </dialog>
+
+  <dialog id="boulder-dialog" aria-labelledby="boulder-title">
+    <form id="boulder-form" autocomplete="off" novalidate>
+      <div class="detail-head">
+        <h2 id="boulder-title" tabindex="-1" autofocus></h2>
+        <button id="boulder-close" class="close" type="button" aria-label="Fermer">&times;</button>
+      </div>
+
+      <div class="field-row">
+        <label class="field"><span>Zone</span><select id="f-zone"></select></label>
+        <label class="field"><span>Niveau</span><select id="f-grade"></select></label>
+      </div>
+
+      <div class="field">
+        <span>Couleur</span>
+        <div class="color-row">
+          <input id="f-color" type="color" value="#e53935" aria-label="Couleur des prises">
+          <input id="f-colorname" type="text" maxlength="30" placeholder="Nom (ex. Rouge)" aria-label="Nom de la couleur">
+        </div>
+        <label class="check"><input id="f-two" type="checkbox"> Deux couleurs (rayures)</label>
+        <div id="f-color2-row" class="color-row" hidden>
+          <input id="f-color2" type="color" value="#ffffff" aria-label="Deuxième couleur">
+          <span class="muted">Deuxième couleur</span>
+        </div>
+      </div>
+
+      <label class="field"><span>Ouvreur</span><input id="f-setter" type="text" maxlength="30" placeholder="Optionnel"></label>
+
+      <div class="field">
+        <span>Photo</span>
+        <div id="f-photo-preview" class="photo-preview"></div>
+        <div class="actions">
+          <button id="f-photo-pick" class="btn secondary small" type="button">Choisir une photo</button>
+          <button id="f-photo-clear" class="btn secondary small" type="button">Aucune photo</button>
+        </div>
+        <div id="photo-picker" class="photo-picker" hidden></div>
+      </div>
+
+      <div class="field">
+        <span>Vidéos YouTube</span>
+        <div id="f-videos" class="video-fields"></div>
+        <button id="f-video-add" class="btn secondary small" type="button">+ Ajouter une vidéo</button>
+      </div>
+
+      <p id="boulder-error" class="form-error" role="alert"></p>
+      <div class="actions">
+        <button id="boulder-cancel" class="btn secondary" type="button">Annuler</button>
+        <button id="boulder-save" class="btn primary" type="submit">Enregistrer</button>
+      </div>
+
+      <div id="delete-zone" class="delete-zone" hidden>
+        <button id="boulder-delete" class="btn link wide danger-text" type="button">Supprimer ce bloc</button>
+        <div id="delete-confirm" hidden>
+          <p class="delete-warning">Supprimer définitivement ce bloc, ses réussites et ses avis ?</p>
+          <div class="actions">
+            <button id="delete-no" class="btn secondary" type="button">Non</button>
+            <button id="delete-yes" class="btn danger" type="button">Supprimer</button>
+          </div>
+        </div>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">

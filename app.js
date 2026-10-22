@@ -12,6 +12,7 @@ const GRADES = [
 const LAST_GRADE = GRADES.length - 1;
 const VOTE_WINDOW = 3; // a vote can differ from the set grade by at most 3 grades
 
+const ADMIN_NAME = "admin"; // always a power user, cannot be removed
 const NAME_MAX = 20;
 const NAME_STORAGE_KEY = "blocs.name";
 const CACHE_KEY = "blocs.cache.boulders";
@@ -24,8 +25,7 @@ const state = {
   zones: [],
   boulders: null, // null while nothing is known yet
   zone: "all", // "all" or a zone id (number)
-  min: 0, // index in GRADES
-  max: LAST_GRADE,
+  grade: -1, // exact grade filter: index in GRADES, -1 = all grades
   records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
   lastFetch: 0,
   status: "loading", // "loading" | "ok" | "failed"
@@ -35,6 +35,7 @@ const state = {
   selectedBar: null, // grade index selected in the chart
   voting: false, // the +/- prompt is open
   busy: false, // a record is being written
+  power: null, // names of the power users, null = unknown (not loaded)
 };
 
 let voteIndex = 0;
@@ -178,6 +179,7 @@ async function connectFirebase() {
   fb = {
     boulders: fsModule.doc(db, "boulders", "all"),
     records: fsModule.doc(db, "records", "all"),
+    power: fsModule.doc(db, "config", "powerusers"),
     getDoc: fsModule.getDoc,
     setDoc: fsModule.setDoc,
     updateDoc: fsModule.updateDoc,
@@ -208,7 +210,11 @@ function applyRecordsSnapshot(snapshot) {
 // If the boulder document does not exist yet, it is created from data/boulders.json.
 async function fetchAllUnbounded() {
   await connectFirebase();
-  const [boulderSnap, recordsSnap] = await Promise.all([fb.getDoc(fb.boulders), fb.getDoc(fb.records)]);
+  const [boulderSnap, recordsSnap, power] = await Promise.all([
+    fb.getDoc(fb.boulders),
+    fb.getDoc(fb.records),
+    fetchPowerUsers(),
+  ]);
   let list;
   if (boulderSnap.exists()) {
     const data = boulderSnap.data();
@@ -220,9 +226,28 @@ async function fetchAllUnbounded() {
   state.boulders = list;
   writeCache(list);
   applyRecordsSnapshot(recordsSnap);
+  if (power) state.power = power;
   if (state.status === "failed") {
     state.status = "ok"; // a slow attempt finally succeeded
     syncUI();
+  }
+}
+
+// The power user list lives in config/powerusers. A failure here (for example the
+// security rule not published yet) must not break the rest, so it only returns null.
+async function fetchPowerUsers() {
+  try {
+    const snapshot = await fb.getDoc(fb.power);
+    if (!snapshot.exists()) {
+      const seed = [ADMIN_NAME];
+      await fb.setDoc(fb.power, { list: seed });
+      return seed;
+    }
+    const list = snapshot.data().list;
+    return Array.isArray(list) ? list.filter((n) => typeof n === "string") : null;
+  } catch (error) {
+    console.error(error);
+    return null;
   }
 }
 
@@ -305,6 +330,7 @@ function refreshRecords() {
 function syncUI() {
   $("notice").hidden = state.status !== "failed";
   renderUserBar();
+  renderAdmin();
   render();
   if (state.currentId) renderDetail();
 }
@@ -399,8 +425,13 @@ function openUserDialog(then = null) {
   $("user-input").value = state.user;
   $("user-signout").hidden = !state.user;
   updateUserForm();
+  const { scrollX, scrollY } = window;
   $("user-dialog").showModal();
+  $("user-input").focus({ preventScroll: true });
   $("user-input").select();
+  // Opening the dialog must not move the page behind it.
+  window.scrollTo(scrollX, scrollY);
+  requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
 }
 
 function updateUserForm() {
@@ -504,25 +535,32 @@ function setZone(zone) {
 /* ---------- Level filter ---------- */
 
 function buildGradeControls() {
-  for (const id of ["min-grade", "max-grade"]) {
-    const select = $(id);
-    GRADES.forEach((grade, index) => select.add(new Option(grade, String(index))));
-  }
-  $("min-grade").addEventListener("change", (event) => {
-    state.min = Number(event.target.value);
-    if (state.max < state.min) state.max = state.min;
+  $("grade-up").addEventListener("click", () => {
+    state.grade = Math.min(LAST_GRADE, state.grade + 1);
     render();
   });
-  $("max-grade").addEventListener("change", (event) => {
-    state.max = Number(event.target.value);
-    if (state.min > state.max) state.min = state.max;
+  $("grade-down").addEventListener("click", () => {
+    state.grade = Math.max(-1, state.grade - 1);
     render();
   });
   $("reset-grade").addEventListener("click", () => {
-    state.min = 0;
-    state.max = LAST_GRADE;
+    state.grade = -1;
     render();
   });
+}
+
+function renderGradeFilter() {
+  if (state.grade < 0) {
+    const chip = document.createElement("span");
+    chip.className = "chip big all";
+    chip.textContent = "Tous";
+    $("grade-value").replaceChildren(chip);
+  } else {
+    $("grade-value").replaceChildren(gradeChip(GRADES[state.grade], "big"));
+  }
+  $("grade-down").disabled = state.grade < 0;
+  $("grade-up").disabled = state.grade >= LAST_GRADE;
+  $("reset-grade").disabled = state.grade < 0;
 }
 
 /* ---------- List ---------- */
@@ -536,8 +574,7 @@ function visibleBoulders() {
   return state.boulders
     .filter((boulder) => state.zone === "all" || boulder.zone === state.zone)
     .filter((boulder) => {
-      const index = gradeIndex(boulder.grade);
-      return index < 0 || (index >= state.min && index <= state.max);
+      return state.grade < 0 || gradeIndex(boulder.grade) === state.grade;
     })
     .sort((a, b) => {
       const gradeA = gradeIndex(a.grade) < 0 ? 99 : gradeIndex(a.grade);
@@ -547,8 +584,7 @@ function visibleBoulders() {
 }
 
 function render() {
-  $("min-grade").value = String(state.min);
-  $("max-grade").value = String(state.max);
+  renderGradeFilter();
 
   for (const polygon of document.querySelectorAll(".zone")) {
     const active = polygon.dataset.zone === String(state.zone);
@@ -672,13 +708,18 @@ function syncDetailWithHash() {
     state.voting = false;
     $("record-status").textContent = "";
     $("record-error").textContent = "";
-    $("detail-title").textContent = `${boulder.colorName} - ${zoneName(boulder.zone)}`;
-    $("detail-photo").replaceChildren(buildPhoto(boulder));
-    fillBeta(boulder, zoneName(boulder.zone));
+    fillDetailStatic(boulder);
   }
   renderDetail();
   if (!dialog.open) dialog.showModal();
   refreshRecords();
+}
+
+// The parts of the detail view that only change when the boulder itself changes.
+function fillDetailStatic(boulder) {
+  $("detail-title").textContent = `${boulder.colorName} - ${zoneName(boulder.zone)}`;
+  $("detail-photo").replaceChildren(buildPhoto(boulder));
+  fillBeta(boulder, zoneName(boulder.zone));
 }
 
 function renderDetail() {
@@ -725,14 +766,13 @@ function renderDone(boulder) {
   const count = $("done-count");
   const names = $("done-names");
   if (!info) {
-    count.textContent = state.status === "failed" ? "Réussites indisponibles pour le moment." : "Chargement…";
-    names.textContent = "";
-  } else if (info.done === 0) {
-    count.textContent = "Personne n'a encore réussi ce bloc.";
-    names.textContent = "";
+    count.textContent = "–";
+    count.removeAttribute("aria-label");
+    names.textContent = state.status === "failed" ? "Réussites indisponibles pour le moment." : "Chargement…";
   } else {
-    count.textContent = info.done === 1 ? "1 grimpeur a réussi ce bloc." : `${info.done} grimpeurs ont réussi ce bloc.`;
-    names.textContent = info.names.join(", ");
+    count.textContent = String(info.done);
+    count.setAttribute("aria-label", completionText(info.done));
+    names.textContent = info.done === 0 ? "Personne pour l'instant." : info.names.join(", ");
   }
 
   const mine = myEntry(boulder.id);
@@ -741,7 +781,7 @@ function renderDone(boulder) {
 
   const myRecord = $("my-record");
   if (mine) {
-    myRecord.textContent = `Tu as réussi ce bloc (${state.user})${hasVote ? ` · ton avis : ${mine.vote}` : ""}`;
+    myRecord.textContent = `✓ Réussi${hasVote ? ` · ton avis : ${mine.vote}` : ""}`;
     myRecord.hidden = false;
   } else {
     myRecord.hidden = true;
@@ -871,11 +911,11 @@ async function writeRecord(boulderId, action, vote = null) {
 
 let statusTimer = null;
 
-function flashStatus(message) {
-  $("record-status").textContent = message;
+function flashStatus(message, target = "record-status") {
+  $(target).textContent = message;
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => {
-    $("record-status").textContent = "";
+    $(target).textContent = "";
   }, 3000);
 }
 
@@ -979,6 +1019,8 @@ function bindUI() {
     if (state.currentId) writeRecord(state.currentId, "vote", GRADES[voteIndex]);
   });
   $("vote-remove").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "unvote"));
+
+  bindManagement();
 }
 
 /* ---------- Beta (videos) ---------- */
@@ -1037,6 +1079,444 @@ function extractYouTubeId(url) {
   } catch {
     return null;
   }
+}
+
+/* ---------- Power users and boulder management ---------- */
+
+// Power users only see the management buttons. This is not a security measure:
+// the database rules stay open, as for everything else on this site.
+
+function isPowerUser() {
+  if (!state.user || !state.power) return false;
+  const key = nameKey(state.user);
+  return state.power.some((name) => nameKey(name) === key);
+}
+
+function canManage() {
+  return isPowerUser() && state.status === "ok";
+}
+
+function renderAdmin() {
+  const allowed = canManage();
+  $("admin-section").hidden = !allowed;
+  $("detail-admin").hidden = !allowed;
+}
+
+// Read-modify-write on the freshest copy of a document, so two editors rarely clash.
+async function mutateBoulders(change) {
+  return withTimeout(
+    (async () => {
+      await connectFirebase();
+      const snapshot = await fb.getDoc(fb.boulders);
+      const data = snapshot.exists() ? snapshot.data() : null;
+      const current = data && Array.isArray(data.list) ? data.list.filter(isValidBoulder) : state.boulders || [];
+      const result = change(current);
+      await fb.setDoc(fb.boulders, { list: result.list });
+      return result;
+    })(),
+    REQUEST_TIMEOUT_MS,
+  );
+}
+
+async function mutatePower(change) {
+  return withTimeout(
+    (async () => {
+      await connectFirebase();
+      const snapshot = await fb.getDoc(fb.power);
+      const data = snapshot.exists() ? snapshot.data() : null;
+      const current = data && Array.isArray(data.list) ? data.list.filter((n) => typeof n === "string") : [ADMIN_NAME];
+      let list = change(current);
+      if (!list.some((name) => nameKey(name) === nameKey(ADMIN_NAME))) list = [ADMIN_NAME, ...list];
+      await fb.setDoc(fb.power, { list });
+      return list;
+    })(),
+    REQUEST_TIMEOUT_MS,
+  );
+}
+
+/* --- Power user list --- */
+
+let powerBusy = false;
+
+function openPowerDialog() {
+  if (!canManage()) return;
+  $("power-error").textContent = "";
+  $("power-input").value = "";
+  updatePowerForm();
+  renderPowerList();
+  $("power-dialog").showModal();
+}
+
+function updatePowerForm() {
+  $("power-add").disabled = powerBusy || !cleanName($("power-input").value);
+}
+
+function renderPowerList() {
+  const rows = (state.power || []).map((name) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "power-name";
+    label.textContent = name;
+    li.appendChild(label);
+    if (nameKey(name) === nameKey(ADMIN_NAME)) {
+      const fixed = document.createElement("small");
+      fixed.textContent = "toujours présent";
+      li.appendChild(fixed);
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn small danger";
+      button.textContent = "Retirer";
+      button.disabled = powerBusy;
+      button.setAttribute("aria-label", `Retirer ${name}`);
+      button.addEventListener("click", () => removePowerUser(name));
+      li.appendChild(button);
+    }
+    return li;
+  });
+  $("power-list").replaceChildren(...rows);
+}
+
+async function changePowerList(change) {
+  powerBusy = true;
+  $("power-error").textContent = "";
+  renderPowerList();
+  updatePowerForm();
+  try {
+    state.power = await mutatePower(change);
+    $("power-input").value = "";
+  } catch (error) {
+    console.error(error);
+    $("power-error").textContent = ERROR_NETWORK;
+  } finally {
+    powerBusy = false;
+    renderPowerList();
+    updatePowerForm();
+    syncUI();
+    if (!canManage() && $("power-dialog").open) $("power-dialog").close(); // removed oneself
+  }
+}
+
+async function addPowerUser(event) {
+  event.preventDefault();
+  const name = cleanName($("power-input").value);
+  if (!name || powerBusy) return;
+  if ((state.power || []).some((n) => nameKey(n) === nameKey(name))) {
+    $("power-error").textContent = "Ce nom est déjà dans la liste.";
+    return;
+  }
+  await changePowerList((list) => (list.some((n) => nameKey(n) === nameKey(name)) ? list : [...list, name]));
+}
+
+async function removePowerUser(name) {
+  if (powerBusy || nameKey(name) === nameKey(ADMIN_NAME)) return;
+  await changePowerList((list) => list.filter((n) => nameKey(n) !== nameKey(name)));
+}
+
+/* --- Boulder form (add and edit) --- */
+
+const DEFAULT_COLOR = "#e53935";
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const formState = { mode: "add", id: null, photo: "", videos: [], busy: false };
+
+function openBoulderForm(boulder) {
+  if (!canManage()) return;
+  const editing = !!boulder;
+  formState.mode = editing ? "edit" : "add";
+  formState.id = editing ? boulder.id : null;
+  formState.busy = false;
+  formState.photo = editing ? boulder.photo || "" : "";
+  formState.videos = editing ? [...(boulder.videos || [])] : [];
+
+  $("boulder-title").textContent = editing ? "Modifier le bloc" : "Nouveau bloc";
+  $("f-zone").value = String(editing ? boulder.zone : typeof state.zone === "number" ? state.zone : 1);
+  $("f-grade").value = editing && gradeIndex(boulder.grade) >= 0 ? boulder.grade : "5a";
+  $("f-color").value = editing && HEX_COLOR.test(boulder.color) ? boulder.color.toLowerCase() : DEFAULT_COLOR;
+  $("f-colorname").value = editing ? boulder.colorName || "" : "";
+  const two = editing && !!boulder.color2;
+  $("f-two").checked = two;
+  $("f-color2").value = two && HEX_COLOR.test(boulder.color2) ? boulder.color2.toLowerCase() : "#ffffff";
+  $("f-color2-row").hidden = !two;
+  $("f-setter").value = editing ? boulder.setter || "" : "";
+  $("boulder-error").textContent = "";
+  $("photo-picker").hidden = true;
+  $("delete-zone").hidden = !editing;
+  $("delete-confirm").hidden = true;
+  $("boulder-delete").hidden = false;
+  renderPhotoPreview();
+  renderVideoFields();
+  setFormBusy(false);
+  $("boulder-dialog").showModal();
+}
+
+function setFormBusy(busy) {
+  formState.busy = busy;
+  for (const id of ["boulder-save", "boulder-cancel", "boulder-delete", "delete-yes", "delete-no"]) {
+    $(id).disabled = busy;
+  }
+}
+
+function renderPhotoPreview() {
+  const box = $("f-photo-preview");
+  if (!formState.photo) {
+    box.className = "photo-preview empty";
+    box.textContent = "Aucune photo";
+    return;
+  }
+  box.className = "photo-preview";
+  const img = document.createElement("img");
+  img.src = formState.photo;
+  img.alt = "";
+  img.addEventListener("error", () => img.remove());
+  const path = document.createElement("small");
+  path.textContent = formState.photo;
+  box.replaceChildren(img, path);
+}
+
+let photoIndexPromise = null;
+
+// photos/index.json is a list of file names, kept by hand (GitHub Pages cannot list a folder).
+function loadPhotoIndex() {
+  if (!photoIndexPromise) {
+    photoIndexPromise = loadJson("photos/index.json")
+      .then((list) => (Array.isArray(list) ? list.filter((n) => typeof n === "string" && n && !n.includes("..")) : []))
+      .catch((error) => {
+        photoIndexPromise = null;
+        throw error;
+      });
+  }
+  return photoIndexPromise;
+}
+
+async function togglePhotoPicker() {
+  const picker = $("photo-picker");
+  if (!picker.hidden) {
+    picker.hidden = true;
+    return;
+  }
+  picker.hidden = false;
+  picker.textContent = "Chargement…";
+  try {
+    const names = await loadPhotoIndex();
+    if (names.length === 0) {
+      picker.textContent = "Aucune photo dans photos/index.json.";
+      return;
+    }
+    const buttons = names.map((name) => {
+      const path = `photos/${name}`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "photo-choice";
+      button.classList.toggle("selected", path === formState.photo);
+      button.setAttribute("aria-label", name);
+      const img = document.createElement("img");
+      img.src = path;
+      img.alt = "";
+      img.loading = "lazy";
+      const label = document.createElement("small");
+      label.textContent = name;
+      button.append(img, label);
+      button.addEventListener("click", () => {
+        formState.photo = path;
+        picker.hidden = true;
+        renderPhotoPreview();
+      });
+      return button;
+    });
+    picker.replaceChildren(...buttons);
+  } catch (error) {
+    console.error(error);
+    picker.textContent = "Liste des photos introuvable (photos/index.json).";
+  }
+}
+
+function renderVideoFields() {
+  const rows = formState.videos.map((url, index) => {
+    const row = document.createElement("div");
+    row.className = "video-row";
+    const input = document.createElement("input");
+    input.type = "url";
+    input.value = url;
+    input.placeholder = "https://www.youtube.com/watch?v=…";
+    input.setAttribute("aria-label", `Lien de la vidéo ${index + 1}`);
+    input.autocapitalize = "off";
+    input.addEventListener("input", () => {
+      formState.videos[index] = input.value;
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn small danger";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `Retirer la vidéo ${index + 1}`);
+    remove.addEventListener("click", () => {
+      formState.videos.splice(index, 1);
+      renderVideoFields();
+    });
+    row.append(input, remove);
+    return row;
+  });
+  $("f-videos").replaceChildren(...rows);
+}
+
+function nextBoulderId(list, zone) {
+  const pattern = new RegExp(`^z${zone}-(\\d+)$`);
+  let max = 0;
+  for (const boulder of list) {
+    const match = pattern.exec(boulder.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  let number = max + 1;
+  let id;
+  do {
+    id = `z${zone}-${String(number).padStart(2, "0")}`;
+    number += 1;
+  } while (list.some((boulder) => boulder.id === id));
+  return id;
+}
+
+// Reads and checks the form. Returns { error } or { fields }.
+function readBoulderForm() {
+  const colorName = $("f-colorname").value.replace(/\s+/g, " ").trim();
+  if (!colorName) return { error: "Donne un nom à la couleur (ex. Rouge)." };
+
+  const videos = [];
+  for (const raw of formState.videos) {
+    const url = raw.trim();
+    if (!url) continue;
+    if (!extractYouTubeId(url)) return { error: `Lien YouTube non reconnu : ${url}` };
+    videos.push(url);
+  }
+
+  const fields = {
+    color: $("f-color").value.toLowerCase(),
+    colorName,
+    zone: Number($("f-zone").value),
+    grade: $("f-grade").value,
+    setter: $("f-setter").value.replace(/\s+/g, " ").trim(),
+    photo: formState.photo,
+    videos,
+  };
+  if ($("f-two").checked) fields.color2 = $("f-color2").value.toLowerCase();
+  return { fields };
+}
+
+async function saveBoulder(event) {
+  event.preventDefault();
+  if (formState.busy || !canManage()) return;
+  const { fields, error } = readBoulderForm();
+  const errorBox = $("boulder-error");
+  errorBox.textContent = error || "";
+  if (error) return;
+
+  setFormBusy(true);
+  try {
+    let saved;
+    const result = await mutateBoulders((list) => {
+      if (formState.mode === "add") {
+        saved = { id: nextBoulderId(list, fields.zone), ...fields };
+        return { list: [...list, saved] };
+      }
+      const existing = list.find((b) => b.id === formState.id);
+      if (!existing) throw new Error("missing");
+      saved = { ...existing, ...fields };
+      if (!fields.color2) delete saved.color2;
+      return { list: list.map((b) => (b.id === formState.id ? saved : b)) };
+    });
+    state.boulders = result.list;
+    writeCache(result.list);
+    $("boulder-dialog").close();
+    syncUI();
+    if (formState.mode === "add") {
+      flashStatus(`Bloc ajouté : ${saved.colorName} - ${zoneName(saved.zone)} (${saved.id}).`, "admin-status");
+    } else {
+      if (state.currentId === saved.id) fillDetailStatic(saved);
+      flashStatus("Bloc modifié.");
+    }
+  } catch (caught) {
+    console.error(caught);
+    errorBox.textContent = caught.message === "missing" ? "Ce bloc n'existe plus." : ERROR_NETWORK;
+  } finally {
+    setFormBusy(false);
+  }
+}
+
+async function deleteBoulder() {
+  if (formState.busy || formState.mode !== "edit" || !canManage()) return;
+  const id = formState.id;
+  setFormBusy(true);
+  try {
+    const result = await mutateBoulders((list) => ({ list: list.filter((b) => b.id !== id) }));
+    state.boulders = result.list;
+    writeCache(result.list);
+    // The boulder's completions and opinions go with it (best effort).
+    try {
+      await withTimeout(
+        (async () => {
+          await connectFirebase();
+          await fb.updateDoc(fb.records, new fb.FieldPath(id), fb.deleteField());
+        })(),
+        REQUEST_TIMEOUT_MS,
+      );
+    } catch (error) {
+      console.error(error);
+    }
+    if (state.records && state.records[id]) {
+      const { [id]: removed, ...rest } = state.records;
+      state.records = rest;
+    }
+    $("boulder-dialog").close();
+    closeDetail();
+    syncUI();
+    flashStatus("Bloc supprimé.", "admin-status");
+  } catch (error) {
+    console.error(error);
+    $("boulder-error").textContent = ERROR_NETWORK;
+    $("delete-confirm").hidden = true;
+    $("boulder-delete").hidden = false;
+  } finally {
+    setFormBusy(false);
+  }
+}
+
+function bindManagement() {
+  $("f-zone").replaceChildren(...state.zones.map((zone) => new Option(zone.name, String(zone.id))));
+  $("f-grade").replaceChildren(...GRADES.map((grade) => new Option(grade, grade)));
+
+  $("btn-add").addEventListener("click", () => openBoulderForm(null));
+  $("btn-power").addEventListener("click", openPowerDialog);
+  $("btn-edit").addEventListener("click", () => openBoulderForm(currentBoulder()));
+
+  $("power-close").addEventListener("click", () => $("power-dialog").close());
+  $("power-input").addEventListener("input", updatePowerForm);
+  $("power-form").addEventListener("submit", addPowerUser);
+
+  $("boulder-close").addEventListener("click", () => $("boulder-dialog").close());
+  $("boulder-cancel").addEventListener("click", () => $("boulder-dialog").close());
+  $("boulder-form").addEventListener("submit", saveBoulder);
+  $("f-two").addEventListener("change", () => {
+    $("f-color2-row").hidden = !$("f-two").checked;
+  });
+  $("f-photo-pick").addEventListener("click", togglePhotoPicker);
+  $("f-photo-clear").addEventListener("click", () => {
+    formState.photo = "";
+    $("photo-picker").hidden = true;
+    renderPhotoPreview();
+  });
+  $("f-video-add").addEventListener("click", () => {
+    formState.videos.push("");
+    renderVideoFields();
+    const inputs = $("f-videos").querySelectorAll("input");
+    inputs[inputs.length - 1].focus({ preventScroll: false });
+  });
+  $("boulder-delete").addEventListener("click", () => {
+    $("boulder-delete").hidden = true;
+    $("delete-confirm").hidden = false;
+  });
+  $("delete-no").addEventListener("click", () => {
+    $("delete-confirm").hidden = true;
+    $("boulder-delete").hidden = false;
+  });
+  $("delete-yes").addEventListener("click", deleteBoulder);
 }
 
 init();

@@ -1,4 +1,4 @@
-# Blocs de la salle
+# Blocs
 
 Static mobile-first site: zone map, boulder list with French grades, detail view with completions, climbers' opinions on the grade and "Beta" videos.
 Hosted on GitHub Pages. Boulders and climbers' records are stored in Firebase Firestore (free Spark plan).
@@ -10,6 +10,7 @@ Hosted on GitHub Pages. Boulders and climbers' records are stored in Firebase Fi
 - `data/boulders.json`: the boulder list. It is the starting data (see "Boulders"), and a backup
 - `data/zones.json`: the zone polygons and the "Tout" button (coordinates from the floor plan)
 - `photos/`: the photos, referenced by the `photo` field of each boulder
+- `photos/index.json`: the list of photo file names offered by the photo picker (see "Managing boulders")
 
 ## Boulders
 
@@ -37,9 +38,17 @@ The boulder list lives in Firestore (`boulders/all`). The first time the site lo
 - `photo`: path to the image (JPEG, WebP or PNG; the name is case-sensitive on GitHub Pages). Empty or a bare folder (`photos/`) shows a placeholder
 - `videos`: list of YouTube links (vertical videos / Shorts work), `[]` when none
 
-### Changing boulders for now
+### Managing boulders (power users)
 
-There is no edit mode yet. To change boulders: edit `data/boulders.json` on GitHub, then in the Firebase console (Firestore) delete the `boulders/all` document. The next visit to the site recreates it from the file.
+Power users (see below) get a "Gestion" section at the bottom of the main page with "Ajouter un bloc" and "Utilisateurs avancés", and a "Modifier ce bloc" button at the bottom of each boulder. The form edits zone, grade, colors (one or two), color name, setter, photo and YouTube links. A new boulder gets an automatic id (`z2-05` = next free number in its zone). The id never changes afterwards, even if the zone is changed, so completions and links stay valid. Deleting a boulder is permanent and also deletes its completions and opinions.
+
+Photos stay in GitHub. After uploading a photo to `photos/`, add its file name to `photos/index.json` (a plain list, for example `["2026-z1-01.jpeg", "2026-z2-03.jpeg"]`) so it appears in the picker.
+
+`data/boulders.json` is now only the first-time seed and a fallback when the database is unreachable.
+
+## Power users
+
+The list of power users is stored in Firestore (`config/powerusers`, created with `admin` on first load). A user is a power user if the name they sign in with is in the list (capitals ignored). "admin" cannot be removed. This only keeps the extra buttons away from ordinary users; it is not a security measure.
 
 ## Users, completions and opinions
 
@@ -49,16 +58,18 @@ There is no edit mode yet. To change boulders: edit `data/boulders.json` on GitH
 - "Donner mon avis" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
 - Opinions never change the displayed grade, which is always the set `grade`.
 - The header shows the signed-in user, the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder.
+- The level filter is a single - / + selector ("Tous", 2, 3, 4a ... 7c+) that shows only the boulders of exactly that grade; the round arrow resets it.
 - The detail view shows who completed the boulder and a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
 - Zooming (pinch and double-tap) is disabled.
 
 ## Database (Firestore)
 
-Two documents, so a page load costs two reads:
+Three documents, so a page load costs three reads:
 
 - `boulders/all`: `{ "list": [ ...boulders ] }`
 - `records/all`: `{ "z1-01": { "u_max": { "name": "Max", "vote": "4b" }, ... }, ... }` (`vote` is optional)
+- `config/powerusers`: `{ "list": ["admin", "Léa"] }`
 
 Security rules (Firestore > Rules). No sign-in: anyone using the site can write, but nobody can delete a whole document from the site.
 
@@ -72,6 +83,11 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /records/all {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+    match /config/powerusers {
       allow read: if true;
       allow create, update: if true;
       allow delete: if false;
