@@ -1032,6 +1032,51 @@ function render() {
   $("list").replaceChildren(...items.map(renderItem));
 }
 
+// Long words (9 characters or more) may be split with a "-" at syllable-like places,
+// so they wrap instead of overflowing. Several-word names already wrap at the spaces.
+const VOWELS = "aeiouyàâäéèêëîïôöùûü";
+const isVowel = (ch) => VOWELS.includes(ch.toLowerCase());
+const INSEPARABLE = ["ch", "ph", "th", "gn", "gh", "sh"];
+
+function softHyphenate(text) {
+  return text
+    .split(" ")
+    .map((word) => {
+      if (word.length < 9) return word;
+      const letters = [...word];
+      const pieces = [""];
+      letters.forEach((ch, i) => {
+        const prev = letters[i - 1];
+        const next = letters[i + 1];
+        let cut = false;
+        if (i > 0 && prev && next) {
+          if (isVowel(prev) && !isVowel(ch) && isVowel(next)) cut = true; // vowel | consonant vowel
+          else if (!isVowel(prev) && !isVowel(ch) && i >= 2 && isVowel(letters[i - 2]) && isVowel(next)) {
+            const pair = (prev + ch).toLowerCase();
+            const liquid = "lr".includes(ch.toLowerCase()) && "bcdfgptv".includes(prev.toLowerCase());
+            cut = !INSEPARABLE.includes(pair) && !liquid; // consonant | consonant
+          }
+        }
+        if (cut) pieces.push("");
+        pieces[pieces.length - 1] += ch;
+      });
+      // no tiny pieces: each one has at least 3 letters
+      const merged = [];
+      for (const piece of pieces) {
+        if (merged.length && (piece.length < 3 || merged[merged.length - 1].length < 3)) merged[merged.length - 1] += piece;
+        else merged.push(piece);
+      }
+      // long pieces are cut in two, so they fit next to the icons
+      const short = merged.flatMap((piece) => {
+        if (piece.length <= 6) return [piece];
+        const half = Math.ceil(piece.length / 2);
+        return [piece.slice(0, half), piece.slice(half)];
+      });
+      return short.join("\u00AD");
+    })
+    .join(" ");
+}
+
 function renderItem(boulder) {
   const li = document.createElement("li");
   li.className = "item";
@@ -1058,7 +1103,7 @@ function renderItem(boulder) {
   main.className = "item-main";
   const title = document.createElement("span");
   title.className = "item-title";
-  title.textContent = boulder.colorName;
+  title.textContent = softHyphenate(boulder.colorName);
   main.appendChild(title);
 
   open.append(zone, swatch, main);

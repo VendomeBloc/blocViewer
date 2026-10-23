@@ -64,10 +64,11 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 - The detail view has a "Validé : (n)" title whose oval opens a pop-up with the climbers and their opinions, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
 - A heart at the start of the boulder title toggles a like for the signed-in user (a guest is asked for a name first). Likes are independent from validations.
-- Each list row has a heart column and a check column (icon over count), faint until it is yours. Tapping one toggles your like / validation right from the list (a guest is asked for a name first). The screen and the counts change at once; the database write waits about 2 seconds (and is sent immediately when the page is hidden), so tapping on and off quickly writes nothing. Un-validating from the list also erases your opinion. If the write fails, the change is undone and an error is shown above the list.
+- Each list row has a heart column and a check column (icon over count), faint until it is yours (the count is never faint; the icon gets a white outline once it is yours). Tapping one toggles your like / validation right from the list (a guest is asked for a name first). The screen and the counts change at once; the database write waits about 2 seconds (and is sent immediately when the page is hidden), so tapping on and off quickly writes nothing. Un-validating from the list also erases your opinion. If the write fails, the change is undone and an error is shown above the list.
 - Zones are color coded on the map and in the list: pastel magenta (1), yellow (2), cyan (3), green (4); the selected zone is shown in a stronger color with a thicker outline.
 - The photo in the boulder view is cropped to at most a third of the screen height; tapping it opens it full screen, where pinch, double tap and the mouse wheel zoom, one finger moves it, and a cross at the top right closes it.
 - The site is dark only.
+- Color names wrap at spaces; long words (9 characters or more) are split with a "-" at syllable-like places.
 - Zooming (pinch and double-tap) is disabled everywhere except in the full-screen photo.
 
 ## Database (Firestore)

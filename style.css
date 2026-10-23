@@ -162,7 +162,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .filters {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   padding: 8px 10px;
   font-size: .95rem;
@@ -188,7 +188,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 }
 .reset:disabled { opacity: .35; cursor: default; }
 /* empty circle -> check -> cross */
-.status-filter { font-size: 1.15rem; font-weight: 700; }
+.status-filter { margin-left: auto; font-size: 1.15rem; font-weight: 700; }
 .status-filter[data-mode="all"] { border: 2px solid var(--muted); background: transparent; }
 .status-filter[data-mode="done"] { border-color: var(--ok); background: var(--ok); color: #06240f; }
 .status-filter[data-mode="todo"] { border-color: var(--danger); background: var(--danger); color: #2a0707; }
@@ -212,8 +212,8 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px 8px 12px;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
   background: var(--card);
   color: var(--text);
   border: 1px solid var(--border);
@@ -226,7 +226,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item-open {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -239,8 +239,8 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 }
 .zone-badge {
   flex: none;
-  width: 38px;
-  padding: 3px 0 2px;
+  width: 40px;
+  padding: 5px 0 4px;
   border-radius: 9px;
   background: var(--zone);
   text-align: center;
@@ -261,7 +261,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   border: 2px solid rgba(128, 128, 128, .5);
 }
 .item-main { flex: 1; min-width: 0; }
-.item-title { display: block; font-weight: 600; }
+.item-title { display: block; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
 
 /* Heart and check columns: faint until it is mine */
 .mark {
@@ -269,23 +269,24 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
-  min-width: 36px;
+  gap: 7px;
+  min-width: 40px;
   padding: 2px 0;
   border: 0;
   background: none;
   font: inherit;
   cursor: pointer;
-  opacity: .38;
-  transition: opacity .1s;
 }
-.mark.on { opacity: 1; }
-.mark-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
-.mark-count { font-size: .8rem; font-weight: 700; line-height: 1; }
+.mark-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; opacity: .38; transition: opacity .1s; }
+.mark.on .mark-icon { opacity: 1; }
+/* the number is never faint */
+.mark-count { font-size: .95rem; font-weight: 800; line-height: 1; }
 .mark.like { color: #ef4444; }
-.mark.like svg { width: 22px; height: 22px; fill: #ef4444; }
+.mark.like svg { width: 22px; height: 22px; fill: #ef4444; overflow: visible; }
+.mark.like.on svg { stroke: #fff; stroke-width: 3; stroke-linejoin: round; paint-order: stroke fill; }
 .mark.done { color: #22c55e; }
 .mark.done .mark-icon { border-radius: 50%; background: #22c55e; color: #052e13; font-size: .95rem; font-weight: 800; }
+.mark.done.on .mark-icon { color: #fff; box-shadow: 0 0 0 2px #fff; }
 .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
 /* Dialogs */
@@ -717,3 +718,13 @@ dialog.photo-viewer, .photo-viewer * { touch-action: none; }
   cursor: pointer;
 }
 .photo-close:focus { outline: none; }
+
+/* Very narrow phones: leave room for the color name */
+@media (max-width: 360px) {
+  .item { gap: 6px; padding: 10px 6px 10px 8px; }
+  .item-open { gap: 8px; }
+  .zone-badge { width: 34px; }
+  .swatch { width: 30px; height: 30px; }
+  .mark { min-width: 30px; }
+  .item .chip { min-width: 44px; padding: 5px 6px; font-size: 1.05rem; }
+}
