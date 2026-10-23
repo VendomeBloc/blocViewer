@@ -38,13 +38,13 @@
     </section>
 
     <section class="card filters" aria-label="Filtre par niveau">
-      <span>Niveau</span>
       <div class="grade-filter">
         <button id="grade-down" class="step-btn" type="button" aria-label="Niveau plus facile">&minus;</button>
         <output id="grade-value" class="step-value" aria-live="polite"></output>
         <button id="grade-up" class="step-btn" type="button" aria-label="Niveau plus dur">+</button>
       </div>
       <button id="reset-grade" class="reset" type="button" aria-label="Réinitialiser le niveau" title="Réinitialiser le niveau">&#8635;</button>
+      <button id="done-filter" class="status-filter" type="button" data-mode="all" aria-label="Tous les blocs" hidden></button>
     </section>
 
     <div id="notice" class="notice" hidden>
@@ -52,9 +52,9 @@
       <button id="retry" class="btn small" type="button">Réessayer</button>
     </div>
 
-    <section aria-labelledby="list-title">
-      <h2 id="list-title">Blocs <span id="count" class="count"></span></h2>
+    <section aria-label="Liste des blocs">
       <p id="loading" class="loading">Chargement…</p>
+      <p id="list-error" class="form-error" role="alert"></p>
       <ul id="list" class="list"></ul>
       <p id="empty" class="empty" hidden>Aucun bloc ne correspond à ces filtres.</p>
     </section>
@@ -252,6 +252,11 @@
       <tbody id="rank-body"></tbody>
     </table>
     <p id="rank-empty" class="empty" hidden>Personne n'a encore validé de bloc.</p>
+  </dialog>
+
+  <dialog id="photo-viewer" class="photo-viewer" aria-label="Photo du bloc">
+    <button id="photo-close" class="photo-close" type="button" aria-label="Fermer la photo">&times;</button>
+    <div id="photo-stage" class="photo-stage"><img id="photo-full" alt="" draggable="false"></div>
   </dialog>
 
   <dialog id="player" class="player" aria-label="Lecteur vidéo">

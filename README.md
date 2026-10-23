@@ -60,11 +60,15 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 - "Noter" opens a - / + stepper that starts on the set grade (or on the climber's previous opinion) and moves one grade at a time, at most 3 grades up or down. "Valider" saves it; "Retirer mon avis" removes just the opinion.
 - Opinions never change the displayed grade, which is always the set `grade`.
 - The header shows "USVME", the signed-in user, and (second line) the number of completed boulders out of all boulders (example 12/27) and the set grade of the hardest completed boulder. Tapping that line opens the ranking of all users (completed boulders descending, then hardest grade).
-- The level filter is a single - / + selector ("Tous", 2, 3, 4, 5, 6, 7) that shows the boulders of that group of grades (6 = 6a to 6c+); the chip keeps the grade color. The round arrow resets it.
+- The level filter is a single - / + selector ("Tous", 4-, 5, 6, 7) that shows the boulders of that group of grades ("4-" = 2 to 4c, 6 = 6a to 6c+); the chip keeps the grade color. The round arrow resets the grade only. When signed in, a round button at the end of the row cycles empty circle (all) / check (validated by me) / cross (not validated by me).
 - The detail view has a "Validé : (n)" title whose oval opens a pop-up with the climbers and their opinions, and shows a bar chart of the opinions around the set grade. The list shows the number of completions and a check mark on the boulders completed by the signed-in user.
 - Grades are color-coded from blue (2) through green, yellow, orange, red and purple to black (7c+).
-- A heart at the start of the boulder title toggles a like for the signed-in user (a guest is asked for a name first). Likes are independent from validations. The list shows the totals ("✓ 5 | ♥ 2") and, on the color swatch, a green check circle (validated by you) and a red heart circle (liked by you).
-- Zooming (pinch and double-tap) is disabled.
+- A heart at the start of the boulder title toggles a like for the signed-in user (a guest is asked for a name first). Likes are independent from validations.
+- Each list row has a heart column and a check column (icon over count), faint until it is yours. Tapping one toggles your like / validation right from the list (a guest is asked for a name first). The screen and the counts change at once; the database write waits about 2 seconds (and is sent immediately when the page is hidden), so tapping on and off quickly writes nothing. Un-validating from the list also erases your opinion. If the write fails, the change is undone and an error is shown above the list.
+- Zones are color coded on the map and in the list: pastel magenta (1), yellow (2), cyan (3), green (4); the selected zone is shown in a stronger color with a thicker outline.
+- The photo in the boulder view is cropped to at most a third of the screen height; tapping it opens it full screen, where pinch, double tap and the mouse wheel zoom, one finger moves it, and a cross at the top right closes it.
+- The site is dark only.
+- Zooming (pinch and double-tap) is disabled everywhere except in the full-screen photo.
 
 ## Database (Firestore)
 

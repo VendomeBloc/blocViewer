@@ -12,12 +12,10 @@ const GRADES = [
 const LAST_GRADE = GRADES.length - 1;
 // The level filter works on groups of grades (all the 5s, all the 6s...).
 const GRADE_GROUPS = [
-  { label: "2", from: 0, to: 0 },
-  { label: "3", from: 1, to: 1 },
-  { label: "4", from: 2, to: 4 },
-  { label: "5", from: 5, to: 7 },
-  { label: "6", from: 8, to: 13 },
-  { label: "7", from: 14, to: 19 },
+  { label: "4-", from: 0, to: 4, color: 3 }, // 2, 3 and 4a-4c, colored like 4b
+  { label: "5", from: 5, to: 7, color: 6 },
+  { label: "6", from: 8, to: 13, color: 10 },
+  { label: "7", from: 14, to: 19, color: 16 },
 ];
 const VOTE_WINDOW = 3; // a vote can differ from the set grade by at most 3 grades
 
@@ -35,6 +33,7 @@ const state = {
   boulders: null, // null while nothing is known yet
   zone: "all", // "all" or a zone id (number)
   grade: -1, // grade group filter: index in GRADE_GROUPS, -1 = all grades
+  doneFilter: "all", // "all" | "done" | "todo" (validated by the signed-in user)
   records: null, // { boulderId: { nameKey: { name, vote? } } }, null = not loaded
   lastFetch: 0,
   status: "loading", // "loading" | "ok" | "failed"
@@ -60,18 +59,39 @@ async function loadJson(path) {
   return response.json();
 }
 
-/* ---------- No zoom (pinch and double-tap) ---------- */
+/* ---------- No zoom (pinch and double-tap), except in the full-screen photo ---------- */
 
 // The viewport tag and CSS handle most browsers; iOS Safari needs these as well.
-document.addEventListener("gesturestart", (event) => event.preventDefault());
-document.addEventListener("gesturechange", (event) => event.preventDefault());
+const inPhotoViewer = (event) => event.target instanceof Element && !!event.target.closest("#photo-viewer");
+document.addEventListener("gesturestart", (event) => {
+  if (!inPhotoViewer(event)) event.preventDefault();
+});
+document.addEventListener("gesturechange", (event) => {
+  if (!inPhotoViewer(event)) event.preventDefault();
+});
 document.addEventListener(
   "touchmove",
   (event) => {
-    if (event.touches.length > 1) event.preventDefault();
+    if (event.touches.length > 1 && !inPhotoViewer(event)) event.preventDefault();
   },
   { passive: false },
 );
+// Double tap: on anything that is not a control, a second quick tap is swallowed.
+// (Controls are covered by the CSS rule; blocking them here would eat fast taps on - / +.)
+let lastTouchEnd = 0;
+document.addEventListener(
+  "touchend",
+  (event) => {
+    const now = Date.now();
+    const control = event.target instanceof Element && event.target.closest("button, a, input, select, textarea, label, summary, [role='button']");
+    if (!inPhotoViewer(event) && !control && now - lastTouchEnd < 350) event.preventDefault();
+    lastTouchEnd = now;
+  },
+  { passive: false },
+);
+document.addEventListener("dblclick", (event) => {
+  if (!inPhotoViewer(event)) event.preventDefault();
+});
 
 /* ---------- Grades and their colors ---------- */
 
@@ -261,6 +281,7 @@ async function loadStaticBoulders() {
 function applyRecordsSnapshot(snapshot) {
   state.records = snapshot.exists() ? snapshot.data() : {};
   state.lastFetch = Date.now();
+  applyPendingOverlay();
 }
 
 // Reads the boulder list and all records (two document reads).
@@ -286,6 +307,7 @@ async function fetchAllUnbounded() {
   applyRecordsSnapshot(recordsSnap);
   if (power) state.power = power;
   if (likes) state.likes = likes;
+  applyPendingOverlay();
   if (state.status === "failed") {
     state.status = "ok"; // a slow attempt finally succeeded
     syncUI();
@@ -343,6 +365,7 @@ async function fetchRecords() {
     );
     applyRecordsSnapshot(snapshot);
     if (likes) state.likes = likes;
+    applyPendingOverlay();
     return true;
   } catch (error) {
     console.error(error);
@@ -499,6 +522,7 @@ async function setLike(liked) {
   $("record-error").textContent = "";
   renderDetail();
   try {
+    await flushPending();
     await withRetry(() =>
       (async () => {
         await connectFirebase();
@@ -602,10 +626,13 @@ async function onUserSubmit(event) {
   syncUI();
   if (then === "complete") await completeBoulder();
   else if (then === "like") await setLike(true);
+  else if (then && typeof then === "object") toggleFromList(then.kind, then.id, true);
 }
 
 function signOut() {
+  flushPending();
   state.user = "";
+  state.doneFilter = "all";
   state.voting = false;
   clearName();
   $("user-dialog").close();
@@ -822,10 +849,13 @@ async function onResume(forceReset = false) {
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) hiddenAt = Date.now();
-  else onResume();
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    flushPending(); // send the waiting changes before the page may be frozen
+  } else onResume();
 });
 window.addEventListener("online", () => onResume(true));
+window.addEventListener("pagehide", () => flushPending());
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) onResume(true);
 });
@@ -918,6 +948,10 @@ function buildGradeControls() {
     state.grade = -1;
     render();
   });
+  $("done-filter").addEventListener("click", () => {
+    state.doneFilter = state.doneFilter === "all" ? "done" : state.doneFilter === "done" ? "todo" : "all";
+    render();
+  });
 }
 
 function renderGradeFilter() {
@@ -927,15 +961,26 @@ function renderGradeFilter() {
     chip.textContent = "Tous";
     $("grade-value").replaceChildren(chip);
   } else {
-    // The chip takes the color of the middle grade of the group, but shows only the number.
+    // The chip takes the color of the group's reference grade, but shows only the number.
     const group = GRADE_GROUPS[state.grade];
-    const chip = gradeChip(GRADES[Math.floor((group.from + group.to) / 2)], "big");
+    const chip = gradeChip(GRADES[group.color], "big");
     chip.textContent = group.label;
     $("grade-value").replaceChildren(chip);
   }
   $("grade-down").disabled = state.grade < 0;
   $("grade-up").disabled = state.grade >= GRADE_GROUPS.length - 1;
   $("reset-grade").disabled = state.grade < 0;
+
+  // Validated / not validated filter: only for a signed-in user.
+  const button = $("done-filter");
+  button.hidden = !state.user;
+  const mode = state.user ? state.doneFilter : "all";
+  button.dataset.mode = mode;
+  button.textContent = mode === "done" ? "✓" : mode === "todo" ? "✕" : "";
+  button.setAttribute(
+    "aria-label",
+    mode === "done" ? "Blocs validés seulement" : mode === "todo" ? "Blocs non validés seulement" : "Tous les blocs",
+  );
 }
 
 /* ---------- List ---------- */
@@ -952,6 +997,10 @@ function visibleBoulders() {
       if (state.grade < 0) return true;
       const index = gradeIndex(boulder.grade);
       return index >= GRADE_GROUPS[state.grade].from && index <= GRADE_GROUPS[state.grade].to;
+    })
+    .filter((boulder) => {
+      if (state.doneFilter === "all" || !state.user || !state.records) return true;
+      return state.doneFilter === "done" ? !!myEntry(boulder.id) : !myEntry(boulder.id);
     })
     .sort((a, b) => {
       const gradeA = gradeIndex(a.grade) < 0 ? 99 : gradeIndex(a.grade);
@@ -972,30 +1021,29 @@ function render() {
   const loading = state.boulders === null;
   $("loading").hidden = !loading;
   if (loading) {
-    $("count").textContent = "";
     $("empty").hidden = true;
     $("list").replaceChildren();
     return;
   }
 
   const items = visibleBoulders();
-  $("count").textContent = `(${items.length})`;
   $("empty").hidden = items.length > 0;
   $("empty").textContent = "Aucun bloc ne correspond à ces filtres.";
   $("list").replaceChildren(...items.map(renderItem));
 }
 
 function renderItem(boulder) {
-  const info = recordsInfo(boulder.id);
-
   const li = document.createElement("li");
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "item";
-  button.addEventListener("click", () => openDetail(boulder.id));
+  li.className = "item";
+  li.addEventListener("click", () => openDetail(boulder.id));
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "item-open";
+  open.setAttribute("aria-label", `${boulder.colorName}, ${zoneName(boulder.zone)}, niveau ${boulder.grade}`);
 
   const zone = document.createElement("span");
-  zone.className = "zone-badge";
+  zone.className = `zone-badge z${boulder.zone}`;
   const zoneLabel = document.createElement("small");
   zoneLabel.textContent = "zone";
   const zoneNumber = document.createElement("strong");
@@ -1005,59 +1053,146 @@ function renderItem(boulder) {
   const swatch = document.createElement("span");
   swatch.className = "swatch";
   swatch.style.background = colorBackground(boulder, 6);
-  if (myEntry(boulder.id)) {
-    const mark = document.createElement("span");
-    mark.className = "done-mark";
-    mark.textContent = "✓";
-    mark.setAttribute("role", "img");
-    mark.setAttribute("aria-label", "Validé");
-    swatch.appendChild(mark);
-  }
-  if (myLike(boulder.id)) {
-    const mark = document.createElement("span");
-    mark.className = "like-mark";
-    mark.innerHTML = HEART_SVG;
-    mark.setAttribute("role", "img");
-    mark.setAttribute("aria-label", "J'aime");
-    swatch.appendChild(mark);
-  }
 
   const main = document.createElement("span");
   main.className = "item-main";
-  const title = document.createElement("div");
+  const title = document.createElement("span");
   title.className = "item-title";
   title.textContent = boulder.colorName;
-  const sub = document.createElement("div");
-  sub.className = "item-sub";
-  if (info) {
-    const done = document.createElement("span");
-    done.className = "count-done";
-    done.textContent = `✓ ${info.done}`;
-    done.setAttribute("aria-label", completionText(info.done));
-    const separator = document.createElement("span");
-    separator.className = "count-sep";
-    separator.textContent = "|";
-    separator.setAttribute("aria-hidden", "true");
-    const likes = document.createElement("span");
-    likes.className = "count-like";
-    const heart = document.createElement("span");
-    heart.className = "mini-heart";
-    heart.innerHTML = HEART_SVG;
-    heart.setAttribute("aria-hidden", "true");
-    likes.append(heart, ` ${likesInfo(boulder.id).count}`);
-    likes.setAttribute("aria-label", `${likesInfo(boulder.id).count} j'aime`);
-    sub.append(done, separator, likes);
-  }
-  main.append(title, sub);
+  main.appendChild(title);
 
-  button.append(zone, swatch, main, gradeChip(boulder.grade));
-  li.appendChild(button);
+  open.append(zone, swatch, main);
+  li.append(open, renderMark("like", boulder), renderMark("done", boulder), gradeChip(boulder.grade));
   return li;
+}
+
+// The heart / check column of a row: faint when not mine, full color when mine.
+function renderMark(kind, boulder) {
+  const isLike = kind === "like";
+  const on = isLike ? myLike(boulder.id) : !!myEntry(boulder.id);
+  const info = isLike ? likesInfo(boulder.id) : recordsInfo(boulder.id);
+  const count = info ? (isLike ? info.count : info.done) : null;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `mark ${kind}`;
+  button.classList.toggle("on", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.setAttribute(
+    "aria-label",
+    isLike ? (on ? "Je n'aime plus ce bloc" : "J'aime ce bloc") : on ? "Annuler ma validation" : "Valider ce bloc",
+  );
+  const icon = document.createElement("span");
+  icon.className = "mark-icon";
+  if (isLike) icon.innerHTML = HEART_SVG;
+  else icon.textContent = "✓";
+  const number = document.createElement("span");
+  number.className = "mark-count";
+  number.textContent = count === null ? "–" : String(count);
+  button.append(icon, number);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation(); // do not open the boulder
+    toggleFromList(kind, boulder.id);
+  });
+  return button;
+}
+
+/* ---------- Likes and validations from the list: instant on screen, written a bit later ---------- */
+
+const FLUSH_DELAY_MS = 2000;
+const pending = new Map(); // "kind:id:key" -> { kind, id, key, name, base, baseEntry, want }
+let flushTimer = null;
+let flushing = null;
+
+// Applies one pending change to the local copies (idempotent).
+function applyLocal(item) {
+  if (item.kind === "like") {
+    const entries = { ...((state.likes || {})[item.id] || {}) };
+    if (item.want) entries[item.key] = { name: item.name };
+    else delete entries[item.key];
+    state.likes = { ...(state.likes || {}), [item.id]: entries };
+  } else if (state.records) {
+    const entries = { ...(state.records[item.id] || {}) };
+    if (item.want) entries[item.key] = item.baseEntry || { name: item.name };
+    else delete entries[item.key];
+    state.records = { ...state.records, [item.id]: entries };
+  }
+}
+
+// A fresh download must not undo changes that are still waiting to be written.
+function applyPendingOverlay() {
+  for (const item of pending.values()) applyLocal(item);
+}
+
+function toggleFromList(kind, id, forceOn = false) {
+  if (!state.user) {
+    openUserDialog({ kind, id }); // a name is needed first
+    return;
+  }
+  if (kind === "done" && !state.records) return; // not loaded yet
+  const key = nameKey(state.user);
+  const current = kind === "like" ? myLike(id) : !!myEntry(id);
+  const want = forceOn ? true : !current;
+  if (want === current) return;
+
+  $("list-error").textContent = "";
+  const slot = `${kind}:${id}:${key}`;
+  let item = pending.get(slot);
+  if (!item) {
+    item = { kind, id, key, name: state.user, base: current, baseEntry: kind === "done" ? myEntry(id) : null };
+    pending.set(slot, item);
+  }
+  item.want = want;
+  applyLocal(item);
+  syncUI(); // the screen updates at once
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushPending, FLUSH_DELAY_MS);
+}
+
+async function commitPending(item) {
+  if (item.want === item.base) return; // toggled back: nothing to write
+  try {
+    await withRetry(() =>
+      (async () => {
+        await connectFirebase();
+        const target = item.kind === "like" ? fb.likes : fb.records;
+        if (item.want) {
+          await fb.setDoc(target, { [item.id]: { [item.key]: { name: item.name } } }, { merge: true });
+        } else {
+          await fb.updateDoc(target, new fb.FieldPath(item.id, item.key), fb.deleteField());
+        }
+      })(),
+    );
+  } catch (error) {
+    console.error(error);
+    item.want = item.base; // put the screen back as the database has it
+    applyLocal(item);
+    $("list-error").textContent = errorText(error);
+    syncUI();
+  }
+}
+
+async function flushPending() {
+  clearTimeout(flushTimer);
+  flushTimer = null;
+  while (flushing) await flushing;
+  if (pending.size === 0) return;
+  const items = [...pending.values()];
+  pending.clear();
+  flushing = (async () => {
+    for (const item of items) await commitPending(item);
+  })();
+  try {
+    await flushing;
+  } finally {
+    flushing = null;
+  }
 }
 
 /* ---------- Detail view ---------- */
 
 function openDetail(id) {
+  flushPending(); // do not leave list changes waiting while the detail view is open
   if (location.hash.slice(1) !== id) {
     location.hash = id; // triggers hashchange -> syncDetailWithHash
   } else {
@@ -1160,8 +1295,144 @@ function buildPhoto(boulder) {
   const img = document.createElement("img");
   img.src = boulder.photo;
   img.alt = `Bloc ${boulder.colorName}, ${zoneName(boulder.zone)}`;
-  img.addEventListener("error", () => img.replaceWith(fallback()));
-  return img;
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "photo-open";
+  open.setAttribute("aria-label", "Agrandir la photo");
+  open.appendChild(img);
+  open.addEventListener("click", () => openPhotoViewer(img.src, img.alt));
+  img.addEventListener("error", () => open.replaceWith(fallback()));
+  return open;
+}
+
+/* ---------- Full-screen photo with its own zoom (pinch, double tap, wheel) ---------- */
+
+const viewer = { scale: 1, x: 0, y: 0, pointers: new Map(), lastTap: 0, lastTapX: 0, lastTapY: 0, moved: 0, startTime: 0 };
+const MAX_ZOOM = 6;
+
+function viewerApply() {
+  const img = $("photo-full");
+  const stage = $("photo-stage");
+  // Keep the picture covering the screen when zoomed; centered when smaller than it.
+  const maxX = Math.max(0, (img.offsetWidth * viewer.scale - stage.clientWidth) / 2);
+  const maxY = Math.max(0, (img.offsetHeight * viewer.scale - stage.clientHeight) / 2);
+  viewer.x = Math.min(maxX, Math.max(-maxX, viewer.x));
+  viewer.y = Math.min(maxY, Math.max(-maxY, viewer.y));
+  img.style.transform = `translate(${viewer.x}px, ${viewer.y}px) scale(${viewer.scale})`;
+}
+
+// Zooms to newScale keeping the point (fx, fy), relative to the screen center, in place.
+function viewerZoomAt(newScale, fx, fy) {
+  const scale = Math.min(MAX_ZOOM, Math.max(1, newScale));
+  const ratio = scale / viewer.scale;
+  viewer.x = fx - (fx - viewer.x) * ratio;
+  viewer.y = fy - (fy - viewer.y) * ratio;
+  viewer.scale = scale;
+  if (scale === 1) {
+    viewer.x = 0;
+    viewer.y = 0;
+  }
+  viewerApply();
+}
+
+function centerRelative(clientX, clientY) {
+  const rect = $("photo-stage").getBoundingClientRect();
+  return [clientX - rect.left - rect.width / 2, clientY - rect.top - rect.height / 2];
+}
+
+function openPhotoViewer(src, alt) {
+  const img = $("photo-full");
+  img.src = src;
+  img.alt = alt;
+  viewer.scale = 1;
+  viewer.x = 0;
+  viewer.y = 0;
+  viewer.pointers.clear();
+  viewerApply();
+  $("photo-viewer").showModal();
+}
+
+function bindPhotoViewer() {
+  const stage = $("photo-stage");
+  $("photo-close").addEventListener("click", () => $("photo-viewer").close());
+
+  const distance = () => {
+    const [a, b] = [...viewer.pointers.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  const middle = () => {
+    const [a, b] = [...viewer.pointers.values()];
+    return [(a.x + b.x) / 2, (a.y + b.y) / 2];
+  };
+
+  stage.addEventListener("pointerdown", (event) => {
+    stage.setPointerCapture(event.pointerId);
+    viewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    viewer.moved = 0;
+    viewer.startTime = Date.now();
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    const previous = viewer.pointers.get(event.pointerId);
+    if (!previous) return;
+    if (viewer.pointers.size === 2) {
+      const [mx0, my0] = middle();
+      const d0 = distance();
+      viewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const [mx1, my1] = middle();
+      const d1 = distance();
+      viewer.x += mx1 - mx0;
+      viewer.y += my1 - my0;
+      if (d0 > 0) viewerZoomAt(viewer.scale * (d1 / d0), ...centerRelative(mx1, my1));
+      else viewerApply();
+      viewer.moved = 99;
+    } else {
+      const dx = event.clientX - previous.x;
+      const dy = event.clientY - previous.y;
+      viewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      viewer.moved += Math.abs(dx) + Math.abs(dy);
+      if (viewer.scale > 1) {
+        viewer.x += dx;
+        viewer.y += dy;
+        viewerApply();
+      }
+    }
+  });
+
+  const end = (event) => {
+    if (!viewer.pointers.has(event.pointerId)) return;
+    const wasSingle = viewer.pointers.size === 1;
+    viewer.pointers.delete(event.pointerId);
+    if (!wasSingle || event.type === "pointercancel") return;
+    // Double tap: zoom in on the spot, or back out.
+    const now = Date.now();
+    const isTap = viewer.moved < 10 && now - viewer.startTime < 300;
+    if (!isTap) return;
+    const close = Math.hypot(event.clientX - viewer.lastTapX, event.clientY - viewer.lastTapY) < 40;
+    if (now - viewer.lastTap < 320 && close) {
+      viewer.lastTap = 0;
+      if (viewer.scale > 1) viewerZoomAt(1, 0, 0);
+      else viewerZoomAt(2.5, ...centerRelative(event.clientX, event.clientY));
+    } else {
+      viewer.lastTap = now;
+      viewer.lastTapX = event.clientX;
+      viewer.lastTapY = event.clientY;
+    }
+  };
+  stage.addEventListener("pointerup", end);
+  stage.addEventListener("pointercancel", end);
+
+  stage.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      viewerZoomAt(viewer.scale * Math.exp(-event.deltaY * 0.002), ...centerRelative(event.clientX, event.clientY));
+    },
+    { passive: false },
+  );
+  window.addEventListener("resize", () => {
+    if ($("photo-viewer").open) viewerApply();
+  });
 }
 
 /* ---------- Completions: one tap to complete, then grade or cancel ---------- */
@@ -1281,6 +1552,7 @@ async function writeRecord(boulderId, action, vote = null) {
   $("record-status").textContent = "";
   renderDetail();
   try {
+    await flushPending(); // changes made in the list go first
     if (!state.records && !(await fetchRecords())) throw new Error("records unavailable");
     await withRetry(() =>
       (async () => {
@@ -1447,6 +1719,7 @@ function bindUI() {
   $("vote-remove").addEventListener("click", () => state.currentId && writeRecord(state.currentId, "unvote"));
 
   bindManagement();
+  bindPhotoViewer();
 }
 
 /* ---------- Beta (videos) ---------- */

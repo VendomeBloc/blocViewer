@@ -1,5 +1,5 @@
 // Firebase web config. These values identify the project; they are not secrets.
-// Access is controlled by the Firestore security rules (see README). -
+// Access is controlled by the Firestore security rules (see README).
 export const firebaseConfig = {
   apiKey: "AIzaSyARgl-6YQgECxTArI6uKZg9TBTgTynhFKk",
   authDomain: "blocviewer.firebaseapp.com",
