@@ -732,18 +732,9 @@ dialog.photo-viewer, .photo-viewer * { touch-action: none; }
   .zone-badge { width: 38px; }
   .swatch { width: 30px; height: 30px; }
   .mark { min-width: 30px; }
-  .item .chip { min-width: 48px; font-size: 1.05rem; }
+  .item .chip { min-width: 46px; padding: 5px 6px; font-size: 1.05rem; }
+  .item > .chip { margin-right: 6px; }
 }
 
-/* Grade block: flush with the right edge of the row, square on the inner side */
-.item > .chip {
-  flex: none;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  padding: 0 8px;
-  border-radius: 0;
-  box-shadow: none;
-}
+/* Grade chip: a rounded chip, centered in the row, with some space on the right */
+.item > .chip { flex: none; align-self: center; margin-right: 10px; }
