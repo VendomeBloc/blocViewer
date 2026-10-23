@@ -93,6 +93,48 @@ document.addEventListener("dblclick", (event) => {
   if (!inPhotoViewer(event)) event.preventDefault();
 });
 
+/* ---------- Press feedback: buttons and rows react the moment a finger touches them ---------- */
+
+const PRESSABLE = "button, a.submit, .zone, [role='button']";
+const PRESS_MIN_MS = 90; // stays visible long enough to be seen on a quick tap
+let pressed = null;
+let pressStart = { x: 0, y: 0, time: 0 };
+
+function releasePress() {
+  const element = pressed;
+  if (!element) return;
+  pressed = null;
+  const wait = Math.max(0, PRESS_MIN_MS - (Date.now() - pressStart.time));
+  setTimeout(() => element.classList.remove("pressed"), wait);
+}
+
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (!(event.target instanceof Element)) return;
+    releasePress();
+    // a heart / check inside a row is pressed on its own; elsewhere the whole row reacts
+    const element = event.target.closest(".mark") || event.target.closest(".item") || event.target.closest(PRESSABLE);
+    if (!element || element.disabled || element.closest("#photo-stage")) return;
+    pressed = element;
+    pressStart = { x: event.clientX, y: event.clientY, time: Date.now() };
+    element.classList.add("pressed");
+  },
+  { passive: true },
+);
+document.addEventListener("pointerup", releasePress, { passive: true });
+document.addEventListener("pointercancel", releasePress, { passive: true }); // a scroll started
+document.addEventListener(
+  "pointermove",
+  (event) => {
+    // the finger moved: it is a scroll or a swipe, not a press
+    if (pressed && Math.hypot(event.clientX - pressStart.x, event.clientY - pressStart.y) > 10) releasePress();
+  },
+  { passive: true },
+);
+document.addEventListener("scroll", releasePress, { capture: true, passive: true });
+
 /* ---------- Grades and their colors ---------- */
 
 function gradeIndex(grade) {
@@ -1107,7 +1149,10 @@ function renderItem(boulder) {
   main.appendChild(title);
 
   open.append(zone, swatch, main);
-  li.append(open, renderMark("like", boulder), renderMark("done", boulder), gradeChip(boulder.grade));
+  const marks = document.createElement("span");
+  marks.className = "marks";
+  marks.append(renderMark("like", boulder), renderMark("done", boulder));
+  li.append(open, marks, gradeChip(boulder.grade));
   return li;
 }
 

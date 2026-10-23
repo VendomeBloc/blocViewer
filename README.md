@@ -68,6 +68,7 @@ The list of power users is stored in Firestore (`config/powerusers`, created wit
 - Zones are color coded on the map and in the list: pastel magenta (1), yellow (2), cyan (3), green (4); the selected zone is shown in a stronger color with a thicker outline.
 - The photo in the boulder view is cropped to at most a third of the screen height; tapping it opens it full screen, where pinch, double tap and the mouse wheel zoom, one finger moves it, and a cross at the top right closes it.
 - The site is dark only.
+- Buttons, map zones and list rows react the moment a finger touches them (they shrink slightly and dim; rows lighten). The effect is cancelled as soon as the finger moves, so scrolling the list does not flash the rows.
 - Color names wrap at spaces; long words (9 characters or more) are split with a "-" at syllable-like places.
 - Zooming (pinch and double-tap) is disabled everywhere except in the full-screen photo.
 

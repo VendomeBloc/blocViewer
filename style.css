@@ -130,7 +130,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  transition: fill .15s;
+  transition: fill .15s, transform .12s, filter .12s;
 }
 /* Hover only on devices that really hover: on touch screens it sticks after a tap. */
 @media (hover: hover) {
@@ -269,9 +269,19 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item-title { display: block; font-size: .94rem; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
 
 /* Heart and check columns: faint until it is mine */
-.mark {
+/* One subtle container for the heart and the check */
+.marks {
   flex: none;
   align-self: center;
+  display: flex;
+  gap: 0;
+  padding: 5px 2px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, .55);
+}
+.mark {
+  flex: none;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -283,13 +293,17 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   font: inherit;
   cursor: pointer;
 }
+.mark + .mark { border-left: 1px solid rgba(148, 163, 184, .35); }
 .mark-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; opacity: .38; transition: opacity .1s; }
 .mark.on .mark-icon { opacity: 1; }
 /* the number is never faint */
 .mark-count { font-size: .95rem; font-weight: 800; line-height: 1; }
+/* lighter tints for the numbers */
+.mark.like .mark-count { color: #fca5a5; }
 .mark.like { color: #ef4444; }
 .mark.like svg { width: 22px; height: 22px; fill: #ef4444; overflow: visible; }
 .mark.like.on svg { stroke: #fff; stroke-width: 3; stroke-linejoin: round; paint-order: stroke fill; }
+.mark.done .mark-count { color: #86efac; }
 .mark.done { color: #22c55e; }
 .mark.done .mark-icon { border-radius: 50%; background: #22c55e; color: #052e13; font-size: .95rem; font-weight: 800; }
 .mark.done.on .mark-icon { color: #fff; box-shadow: 0 0 0 2px #fff; }
@@ -731,10 +745,24 @@ dialog.photo-viewer, .photo-viewer * { touch-action: none; }
   .item-open { gap: 8px; }
   .zone-badge { width: 38px; }
   .swatch { width: 30px; height: 30px; }
-  .mark { min-width: 30px; }
+  .mark { min-width: 28px; }
   .item .chip { min-width: 46px; padding: 5px 6px; font-size: 1.05rem; }
   .item > .chip { margin-right: 6px; }
 }
 
 /* Grade chip: a rounded chip, centered in the row, with some space on the right */
 .item > .chip { flex: none; align-self: center; margin-right: 10px; }
+
+/* Press feedback (the "pressed" class is set by the script on touch-down) */
+button, a.submit, .item, .zone {
+  transition: transform .14s ease, filter .14s ease, background-color .14s ease, opacity .14s ease;
+}
+.pressed { transition-duration: 0s !important; }
+button.pressed, a.submit.pressed { transform: scale(.96); filter: brightness(.82); }
+.step-btn.pressed, .close.pressed, .reset.pressed, .status-filter.pressed, .heart.pressed,
+.photo-close.pressed, .count-pill.pressed { transform: scale(.88); }
+.mark.pressed { transform: scale(.82); filter: none; }
+.item.pressed { transform: scale(.985); background: #2d3c55; }
+.item-open.pressed { transform: none; filter: none; } /* the row itself reacts, not the inner button */
+.photo-open.pressed { transform: scale(.985); filter: brightness(.85); }
+.zone.pressed { transform: scale(.985); filter: brightness(.88); transform-box: fill-box; transform-origin: center; }
