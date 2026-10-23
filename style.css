@@ -211,9 +211,11 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .item {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 6px;
-  padding: 10px 10px 10px 12px;
+  min-height: 72px;
+  padding: 0;
+  overflow: hidden; /* the zone block and the grade block follow the rounded corners of the row */
   background: var(--card);
   color: var(--text);
   border: 1px solid var(--border);
@@ -225,7 +227,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 }
 .item-open {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
   flex: 1;
   min-width: 0;
@@ -239,9 +241,11 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 }
 .zone-badge {
   flex: none;
-  width: 40px;
-  padding: 5px 0 4px;
-  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
   background: var(--zone);
   text-align: center;
   line-height: 1.05;
@@ -251,21 +255,23 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .zone-badge.z2 { background: var(--z2); }
 .zone-badge.z3 { background: var(--z3); }
 .zone-badge.z4 { background: var(--z4); }
-.zone-badge small { display: block; font-size: .62rem; color: #374151; }
+.zone-badge small { display: block; margin-bottom: 5px; font-size: .62rem; color: #374151; }
 .zone-badge strong { font-size: 1.25rem; }
 .swatch {
   flex: none;
+  align-self: center;
   width: 38px;
   height: 38px;
   border-radius: 10px;
   border: 2px solid rgba(128, 128, 128, .5);
 }
-.item-main { flex: 1; min-width: 0; }
+.item-main { flex: 1; min-width: 0; align-self: center; padding: 8px 0; }
 .item-title { display: block; font-size: .94rem; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
 
 /* Heart and check columns: faint until it is mine */
 .mark {
   flex: none;
+  align-self: center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -721,10 +727,23 @@ dialog.photo-viewer, .photo-viewer * { touch-action: none; }
 
 /* Very narrow phones: leave room for the color name */
 @media (max-width: 360px) {
-  .item { gap: 6px; padding: 10px 6px 10px 8px; }
+  .item { gap: 4px; }
   .item-open { gap: 8px; }
-  .zone-badge { width: 34px; }
+  .zone-badge { width: 38px; }
   .swatch { width: 30px; height: 30px; }
   .mark { min-width: 30px; }
-  .item .chip { min-width: 44px; padding: 5px 6px; font-size: 1.05rem; }
+  .item .chip { min-width: 48px; font-size: 1.05rem; }
+}
+
+/* Grade block: flush with the right edge of the row, square on the inner side */
+.item > .chip {
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 0 8px;
+  border-radius: 0;
+  box-shadow: none;
 }
