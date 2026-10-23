@@ -269,19 +269,9 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item-title { display: block; font-size: .94rem; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
 
 /* Heart and check columns: faint until it is mine */
-/* One subtle container for the heart and the check */
-.marks {
-  flex: none;
-  align-self: center;
-  display: flex;
-  gap: 0;
-  padding: 5px 2px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: rgba(15, 23, 42, .55);
-}
 .mark {
   flex: none;
+  align-self: center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -293,7 +283,6 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   font: inherit;
   cursor: pointer;
 }
-.mark + .mark { border-left: 1px solid rgba(148, 163, 184, .35); }
 .mark-icon { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; opacity: .38; transition: opacity .1s; }
 .mark.on .mark-icon { opacity: 1; }
 /* the number is never faint */
@@ -745,7 +734,7 @@ dialog.photo-viewer, .photo-viewer * { touch-action: none; }
   .item-open { gap: 8px; }
   .zone-badge { width: 38px; }
   .swatch { width: 30px; height: 30px; }
-  .mark { min-width: 28px; }
+  .mark { min-width: 30px; }
   .item .chip { min-width: 46px; padding: 5px 6px; font-size: 1.05rem; }
   .item > .chip { margin-right: 6px; }
 }

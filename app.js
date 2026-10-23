@@ -1149,10 +1149,7 @@ function renderItem(boulder) {
   main.appendChild(title);
 
   open.append(zone, swatch, main);
-  const marks = document.createElement("span");
-  marks.className = "marks";
-  marks.append(renderMark("like", boulder), renderMark("done", boulder));
-  li.append(open, marks, gradeChip(boulder.grade));
+  li.append(open, renderMark("like", boulder), renderMark("done", boulder), gradeChip(boulder.grade));
   return li;
 }
 
