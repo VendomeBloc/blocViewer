@@ -212,7 +212,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   padding: 10px 10px 10px 12px;
   background: var(--card);
   color: var(--text);
@@ -226,7 +226,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
 .item-open {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -261,7 +261,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   border: 2px solid rgba(128, 128, 128, .5);
 }
 .item-main { flex: 1; min-width: 0; }
-.item-title { display: block; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
+.item-title { display: block; font-size: .94rem; font-weight: 600; overflow-wrap: break-word; hyphens: manual; }
 
 /* Heart and check columns: faint until it is mine */
 .mark {
@@ -270,7 +270,7 @@ h2 { font-size: 1.05rem; margin: 0 0 8px; }
   flex-direction: column;
   align-items: center;
   gap: 7px;
-  min-width: 40px;
+  min-width: 34px;
   padding: 2px 0;
   border: 0;
   background: none;
